@@ -68,7 +68,11 @@ const CONFIG = {
     PAGE_CONTENT_EXTRACTED: 'pageContentExtracted',
     CONTENT_SCRIPT_ERROR: 'contentScriptError',
     TOGGLE_TRANSLATION: 'toggleTranslation',
-    RESTORE_ORIGINAL: 'restoreOriginal'
+    RESTORE_ORIGINAL: 'restoreOriginal',
+    START_CONTINUOUS_TRANSLATION: 'startContinuousTranslation',
+    STOP_CONTINUOUS_TRANSLATION: 'stopContinuousTranslation',
+    UPDATE_CONTINUOUS_LANGUAGE: 'updateContinuousLanguage',
+    SIDEPANEL_CLOSED: 'sidepanelClosed'
   },
 
   // Error types
@@ -214,6 +218,64 @@ class StateManager {
     
     this.activeTranslations.set(tabId, newState);
     Logger.debug(`Translation state updated for tab ${tabId}`, newState, 'StateManager');
+  }
+
+  /**
+   * Check if continuous translation is enabled for a tab
+   * @param {number} tabId - Tab ID
+   * @returns {boolean} True if continuous translation is enabled
+   */
+  isContinuousTranslationEnabled(tabId) {
+    const state = this.activeTranslations.get(tabId);
+    return state && state.continuousTranslation === true;
+  }
+
+  /**
+   * Enable continuous translation for a tab
+   * @param {number} tabId - Tab ID
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   */
+  enableContinuousTranslation(tabId, sourceLanguage, targetLanguage) {
+    this.setTranslationState(tabId, {
+      continuousTranslation: true,
+      sourceLanguage,
+      targetLanguage,
+      continuousStartTime: Date.now()
+    });
+    Logger.info(`Continuous translation enabled for tab ${tabId}: ${sourceLanguage} → ${targetLanguage}`, 'StateManager');
+  }
+
+  /**
+   * Disable continuous translation for a tab
+   * @param {number} tabId - Tab ID
+   */
+  disableContinuousTranslation(tabId) {
+    const state = this.activeTranslations.get(tabId);
+    if (state) {
+      this.setTranslationState(tabId, {
+        continuousTranslation: false,
+        continuousStartTime: null
+      });
+      Logger.info(`Continuous translation disabled for tab ${tabId}`, 'StateManager');
+    }
+  }
+
+  /**
+   * Update continuous translation language for a tab
+   * @param {number} tabId - Tab ID
+   * @param {string} sourceLanguage - New source language
+   * @param {string} targetLanguage - New target language
+   */
+  updateContinuousLanguage(tabId, sourceLanguage, targetLanguage) {
+    const state = this.activeTranslations.get(tabId);
+    if (state && state.continuousTranslation) {
+      this.setTranslationState(tabId, {
+        sourceLanguage,
+        targetLanguage
+      });
+      Logger.info(`Continuous translation language updated for tab ${tabId}: ${sourceLanguage} → ${targetLanguage}`, 'StateManager');
+    }
   }
 
   /**
@@ -837,6 +899,22 @@ class MessageRouter {
           this.forwardToSidepanel(message);
           break;
 
+        case CONFIG.MESSAGES.START_CONTINUOUS_TRANSLATION:
+          await this.handleStartContinuousTranslation(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.STOP_CONTINUOUS_TRANSLATION:
+          await this.handleStopContinuousTranslation(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.UPDATE_CONTINUOUS_LANGUAGE:
+          await this.handleUpdateContinuousLanguage(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.SIDEPANEL_CLOSED:
+          this.handleSidepanelClosed(message, sender);
+          break;
+
         default:
           Logger.warn(`Unknown message action: ${message.action}`, 'MessageRouter');
           sendResponse({ success: false, error: 'Unknown action' });
@@ -1084,6 +1162,124 @@ class MessageRouter {
     } catch (error) {
       // Sidepanel might not be open, which is fine
       Logger.debug('Could not forward to sidepanel (might not be open)', null, 'MessageRouter');
+    }
+  }
+
+  /**
+   * Handle start continuous translation request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleStartContinuousTranslation(message, sender, sendResponse) {
+    const { tabId, sourceLanguage, targetLanguage } = message;
+
+    try {
+      if (!tabId || !targetLanguage) {
+        throw new Error('Missing required parameters: tabId and targetLanguage');
+      }
+
+      // Enable continuous translation in state
+      this.stateManager.enableContinuousTranslation(tabId, sourceLanguage, targetLanguage);
+
+      // Send message to content script
+      const response = await this.sendToContentScript(tabId, {
+        action: CONFIG.MESSAGES.START_CONTINUOUS_TRANSLATION,
+        sourceLanguage,
+        targetLanguage
+      });
+
+      sendResponse(response);
+    } catch (error) {
+      Logger.error('Failed to start continuous translation', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle stop continuous translation request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleStopContinuousTranslation(message, sender, sendResponse) {
+    const { tabId } = message;
+
+    try {
+      if (!tabId) {
+        throw new Error('Missing required parameter: tabId');
+      }
+
+      // Disable continuous translation in state
+      this.stateManager.disableContinuousTranslation(tabId);
+
+      // Send message to content script
+      const response = await this.sendToContentScript(tabId, {
+        action: CONFIG.MESSAGES.STOP_CONTINUOUS_TRANSLATION
+      });
+
+      sendResponse(response);
+    } catch (error) {
+      Logger.error('Failed to stop continuous translation', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle update continuous language request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleUpdateContinuousLanguage(message, sender, sendResponse) {
+    const { tabId, sourceLanguage, targetLanguage } = message;
+
+    try {
+      if (!tabId || !targetLanguage) {
+        throw new Error('Missing required parameters: tabId and targetLanguage');
+      }
+
+      // Update continuous translation language in state
+      this.stateManager.updateContinuousLanguage(tabId, sourceLanguage, targetLanguage);
+
+      // Send message to content script
+      const response = await this.sendToContentScript(tabId, {
+        action: CONFIG.MESSAGES.UPDATE_CONTINUOUS_LANGUAGE,
+        sourceLanguage,
+        targetLanguage
+      });
+
+      sendResponse(response);
+    } catch (error) {
+      Logger.error('Failed to update continuous translation language', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle sidepanel closed notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handleSidepanelClosed(message, sender) {
+    const { tabId } = message;
+    
+    if (tabId) {
+      // Stop continuous translation when sidepanel is closed
+      this.stateManager.disableContinuousTranslation(tabId);
+      
+      // Notify content script
+      this.sendToContentScript(tabId, {
+        action: CONFIG.MESSAGES.STOP_CONTINUOUS_TRANSLATION
+      }).catch(error => {
+        Logger.debug('Could not notify content script of sidepanel closure', error, 'MessageRouter');
+      });
+      
+      Logger.info(`Continuous translation stopped due to sidepanel closure for tab ${tabId}`, 'MessageRouter');
     }
   }
 }

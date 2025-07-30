@@ -4,6 +4,11 @@ let originalContent = new Map();
 let observer = null;
 let currentTranslation = null; // Current translation state for streaming
 let translationQueue = new Map(); // Track pending translations
+let continuousTranslation = {
+  enabled: false,
+  sourceLanguage: 'auto',
+  targetLanguage: 'English'
+}; // Track continuous translation state
 
 // Initialize content script
 function initializeContentScript() {
@@ -31,6 +36,18 @@ function setupMessageListeners() {
       case 'restoreOriginal':
         restoreOriginalContent();
         break;
+
+      case 'startContinuousTranslation':
+        handleStartContinuousTranslation(message, sendResponse);
+        return true;
+
+      case 'stopContinuousTranslation':
+        handleStopContinuousTranslation(message, sendResponse);
+        break;
+
+      case 'updateContinuousLanguage':
+        handleUpdateContinuousLanguage(message, sendResponse);
+        return true;
     }
   });
 }
@@ -241,10 +258,10 @@ function startObservingChanges() {
       }
     });
     
-    // Translate new elements if we have any and translation is active
-    if (newElementsToTranslate.length > 0 && isTranslated && currentTranslation?.isActive) {
-      console.log(`🔄 Found ${newElementsToTranslate.length} new elements to translate`);
-      translateNewElements(newElementsToTranslate);
+    // Translate new elements if we have any and continuous translation is enabled
+    if (newElementsToTranslate.length > 0 && continuousTranslation.enabled) {
+      console.log(`🔄 Found ${newElementsToTranslate.length} new elements to translate (continuous mode)`);
+      translateNewElementsContinuous(newElementsToTranslate);
     }
   });
   
@@ -542,12 +559,125 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Handle start continuous translation message
+ * @param {Object} message - Message with sourceLanguage and targetLanguage
+ * @param {Function} sendResponse - Response callback
+ */
+async function handleStartContinuousTranslation(message, sendResponse) {
+  try {
+    const { sourceLanguage, targetLanguage } = message;
+    
+    // Enable continuous translation
+    continuousTranslation.enabled = true;
+    continuousTranslation.sourceLanguage = sourceLanguage;
+    continuousTranslation.targetLanguage = targetLanguage;
+    
+    console.log(`🔄 Continuous translation started: ${sourceLanguage} → ${targetLanguage}`);
+    
+    // Perform initial translation of current page
+    await handleTranslatePage(message, (response) => {
+      // Translation complete, start observing for new elements
+      if (response.success) {
+        startObservingChanges();
+        console.log('🔄 DOM observation started for continuous translation');
+      }
+    });
+    
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('❌ Failed to start continuous translation:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Handle stop continuous translation message
+ * @param {Object} message - Message
+ * @param {Function} sendResponse - Response callback
+ */
+function handleStopContinuousTranslation(message, sendResponse) {
+  try {
+    // Disable continuous translation
+    continuousTranslation.enabled = false;
+    
+    // Stop observing DOM changes
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    
+    console.log('🔄 Continuous translation stopped');
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('❌ Failed to stop continuous translation:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Handle update continuous language message
+ * @param {Object} message - Message with new sourceLanguage and targetLanguage
+ * @param {Function} sendResponse - Response callback
+ */
+async function handleUpdateContinuousLanguage(message, sendResponse) {
+  try {
+    const { sourceLanguage, targetLanguage } = message;
+    
+    // Update continuous translation languages
+    continuousTranslation.sourceLanguage = sourceLanguage;
+    continuousTranslation.targetLanguage = targetLanguage;
+    
+    console.log(`🔄 Continuous translation language updated: ${sourceLanguage} → ${targetLanguage}`);
+    
+    // If continuous translation is enabled, retranslate current page with new language
+    if (continuousTranslation.enabled) {
+      // Restore original content first
+      restoreOriginalContent();
+      
+      // Wait a bit for restoration to complete
+      await sleep(100);
+      
+      // Translate with new language
+      await handleTranslatePage(message, () => {
+        console.log('🔄 Page retranslated with new language');
+      });
+    }
+    
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('❌ Failed to update continuous translation language:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Translate new elements in continuous mode
+ * @param {Array} elements - New elements to translate
+ */
+async function translateNewElementsContinuous(elements) {
+  try {
+    await processBatch(
+      elements, 
+      continuousTranslation.sourceLanguage, 
+      continuousTranslation.targetLanguage, 
+      'CONTINUOUS', 
+      1
+    );
+  } catch (error) {
+    console.error('❌ Failed to translate new elements in continuous mode:', error);
+  }
+}
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
   if (observer) {
     observer.disconnect();
   }
   originalContent.clear();
+  
+  // Stop continuous translation on page unload
+  continuousTranslation.enabled = false;
 });
 
 // Initialize when DOM is ready

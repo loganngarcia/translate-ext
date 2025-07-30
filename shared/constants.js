@@ -366,7 +366,11 @@ export const CHROME = {
     PAGE_CONTENT_EXTRACTED: 'pageContentExtracted',
     CONTENT_SCRIPT_ERROR: 'contentScriptError',
     TOGGLE_TRANSLATION: 'toggleTranslation',
-    RESTORE_ORIGINAL: 'restoreOriginal'
+    RESTORE_ORIGINAL: 'restoreOriginal',
+    START_CONTINUOUS_TRANSLATION: 'startContinuousTranslation',
+    STOP_CONTINUOUS_TRANSLATION: 'stopContinuousTranslation',
+    UPDATE_CONTINUOUS_LANGUAGE: 'updateContinuousLanguage',
+    SIDEPANEL_CLOSED: 'sidepanelClosed'
   },
   
   /** Tab and window management */

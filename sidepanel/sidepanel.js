@@ -115,6 +115,7 @@ class AppStateManager {
       isTranslating: false,
       isSpeaking: false,
       isInitialized: false,
+      continuousTranslation: false,
       
       // Content data
       currentSummary: null,
@@ -379,8 +380,9 @@ class UIManager {
   /**
    * Update the translate button state
    * @param {boolean} isLoading - Whether translation is in progress
+   * @param {boolean} isContinuous - Whether continuous translation is enabled
    */
-  updateTranslateButton(isLoading) {
+  updateTranslateButton(isLoading, isContinuous = false) {
     const button = this.elements.translateBtn;
     if (!button) return;
 
@@ -392,8 +394,14 @@ class UIManager {
       button.disabled = true;
       span.textContent = 'Translating...';
       Logger.debug('Translate button set to loading state', null, 'UIManager');
-    } else {
+    } else if (isContinuous) {
       button.classList.remove('loading');
+      button.classList.add('continuous');
+      button.disabled = false;
+      span.textContent = 'Stop Translation';
+      Logger.debug('Translate button set to continuous mode', null, 'UIManager');
+    } else {
+      button.classList.remove('loading', 'continuous');
       button.disabled = false;
       span.textContent = 'Translate';
       Logger.debug('Translate button reset to normal state', null, 'UIManager');
@@ -765,6 +773,35 @@ class EventManager {
       // Update state
       this.stateManager.set('targetLanguage', newLanguage);
       
+      // If continuous translation is enabled, update the continuous translation language
+      const isContinuousEnabled = this.stateManager.get('continuousTranslation');
+      const currentTabId = this.stateManager.get('currentTabId');
+      
+      if (isContinuousEnabled && currentTabId) {
+        try {
+          const sourceLanguage = this.stateManager.get('currentLanguage');
+          
+          Logger.info(`Updating continuous translation language: ${sourceLanguage} → ${newLanguage}`, 'EventManager');
+          
+          // Send update continuous language request to background script
+          const response = await this.sendChromeMessage({
+            action: 'updateContinuousLanguage',
+            tabId: currentTabId,
+            sourceLanguage,
+            targetLanguage: newLanguage
+          });
+
+          if (!response || !response.success) {
+            throw new Error(response?.error || 'Failed to update continuous translation language');
+          }
+
+          Logger.info('Continuous translation language updated successfully', 'EventManager');
+        } catch (error) {
+          Logger.error('Failed to update continuous translation language', error, 'EventManager');
+          this.uiManager.showErrorMessage('Failed to update translation language. Please try again.');
+        }
+      }
+      
       // Save to storage
       const success = await StorageManager.saveUserPreferences({
         targetLanguage: newLanguage
@@ -870,7 +907,11 @@ class EventManager {
     this.stateManager.subscribe((key, newValue, oldValue) => {
       switch (key) {
         case 'isTranslating':
-          this.uiManager.updateTranslateButton(newValue);
+        case 'continuousTranslation':
+          // Update button based on both translation and continuous states
+          const isTranslating = this.stateManager.get('isTranslating');
+          const isContinuous = this.stateManager.get('continuousTranslation');
+          this.uiManager.updateTranslateButton(isTranslating && !isContinuous, isContinuous);
           break;
           
         case 'isSpeaking':
@@ -976,7 +1017,7 @@ class EventManager {
    */
   async handleTranslateAction() {
     try {
-      this.stateManager.set('isTranslating', true);
+      const isContinuousEnabled = this.stateManager.get('continuousTranslation');
       
       // Get active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -987,25 +1028,55 @@ class EventManager {
       const sourceLanguage = this.stateManager.get('currentLanguage');
       const targetLanguage = this.stateManager.get('targetLanguage');
       
-      Logger.info(`Starting translation: ${sourceLanguage} → ${targetLanguage}`, 'EventManager');
+      if (!isContinuousEnabled) {
+        // Start continuous translation mode
+        this.stateManager.set('isTranslating', true);
+        this.stateManager.set('continuousTranslation', true);
+        this.stateManager.set('currentTabId', tab.id);
+        
+        Logger.info(`Starting continuous translation: ${sourceLanguage} → ${targetLanguage}`, 'EventManager');
 
-      // Send translation request to background script
-      const response = await this.sendChromeMessage({
-        action: CONFIG.MESSAGES.TRANSLATE_PAGE,
-        tabId: tab.id,
-        sourceLanguage,
-        targetLanguage
-      });
+        // Send start continuous translation request to background script
+        const response = await this.sendChromeMessage({
+          action: 'startContinuousTranslation',
+          tabId: tab.id,
+          sourceLanguage,
+          targetLanguage
+        });
 
-      if (!response || !response.success) {
-        throw new Error(response?.error || 'Translation request failed');
+        if (!response || !response.success) {
+          throw new Error(response?.error || 'Failed to start continuous translation');
+        }
+
+        // Update UI to show continuous translation is active
+        this.uiManager.updateTranslateButton(false, true); // not loading, but continuous mode
+        Logger.info('Continuous translation started successfully', 'EventManager');
+      } else {
+        // Stop continuous translation mode
+        this.stateManager.set('continuousTranslation', false);
+        
+        Logger.info('Stopping continuous translation', 'EventManager');
+
+        // Send stop continuous translation request to background script
+        const response = await this.sendChromeMessage({
+          action: 'stopContinuousTranslation',
+          tabId: tab.id
+        });
+
+        if (!response || !response.success) {
+          throw new Error(response?.error || 'Failed to stop continuous translation');
+        }
+
+        // Update UI to show continuous translation is stopped
+        this.uiManager.updateTranslateButton(false, false);
+        this.stateManager.set('isTranslating', false);
+        Logger.info('Continuous translation stopped successfully', 'EventManager');
       }
-
-      Logger.info('Translation request sent successfully', 'EventManager');
     } catch (error) {
-      Logger.error('Translation request failed', error, 'EventManager');
+      Logger.error('Translation action failed', error, 'EventManager');
       this.uiManager.showErrorMessage('Translation failed. Please try again.');
       this.stateManager.set('isTranslating', false);
+      this.stateManager.set('continuousTranslation', false);
     }
   }
 
@@ -1177,8 +1248,34 @@ class SidepanelApp {
   /**
    * Clean up resources when shutting down
    */
-  cleanup() {
+  async cleanup() {
     try {
+      // Stop continuous translation if enabled
+      const isContinuousEnabled = this.stateManager.get('continuousTranslation');
+      const currentTabId = this.stateManager.get('currentTabId');
+      
+      if (isContinuousEnabled && currentTabId) {
+        try {
+          Logger.info('Stopping continuous translation due to sidepanel closure', 'SidepanelApp');
+          
+          // Send stop continuous translation request
+          await this.eventManager.sendChromeMessage({
+            action: 'stopContinuousTranslation',
+            tabId: currentTabId
+          });
+          
+          // Notify background script that sidepanel is closing
+          await this.eventManager.sendChromeMessage({
+            action: 'sidepanelClosed',
+            tabId: currentTabId
+          });
+          
+          Logger.info('Continuous translation stopped successfully', 'SidepanelApp');
+        } catch (error) {
+          Logger.error('Failed to stop continuous translation on cleanup', error, 'SidepanelApp');
+        }
+      }
+      
       // Stop any ongoing speech
       this.speechManager.stopSpeaking();
       
@@ -1299,9 +1396,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Handle page unload cleanup
  */
-window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', async () => {
   if (app) {
-    app.cleanup();
+    await app.cleanup();
   }
 });
 
