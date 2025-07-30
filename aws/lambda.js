@@ -110,8 +110,16 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Parse request body
-    const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+    // Parse request body - handle both API Gateway and direct test formats
+    let body;
+    if (event.body) {
+      // API Gateway format (body is a JSON string)
+      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+    } else {
+      // Direct test format (data is in event root)
+      body = event;
+    }
+    
     const { action, content, sourceLanguage, targetLanguage, pageUrl } = body;
 
     // Validate input

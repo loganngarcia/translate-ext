@@ -360,6 +360,7 @@ export const CHROME = {
     PROCESS_TRANSLATION: 'processTranslation',
     TRANSLATE_TEXT: 'translateText',
     UPDATE_SUMMARY: 'updateSummary',
+    TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',
     PAGE_CONTENT_EXTRACTED: 'pageContentExtracted',

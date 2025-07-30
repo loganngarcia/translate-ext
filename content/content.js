@@ -2,6 +2,8 @@
 let isTranslated = false;
 let originalContent = new Map();
 let observer = null;
+let currentTranslation = null; // Current translation state for streaming
+let translationQueue = new Map(); // Track pending translations
 
 // Initialize content script
 function initializeContentScript() {
@@ -64,24 +66,42 @@ function extractPageContent() {
 }
 
 function getTextElements() {
-  const selector = 'p, h1, h2, h3, h4, h5, h6, span, div, a, li, td, th, label, button, [aria-label]';
-  const elements = document.querySelectorAll(selector);
+  // Much broader selector to catch all text content
+  const selector = '*';
+  const allElements = document.querySelectorAll(selector);
   
-  return Array.from(elements).filter(el => {
-    // Filter out elements that shouldn't be translated
-    if (el.closest('script, style, code, pre, noscript')) return false;
-    if (el.querySelector('img, video, audio, canvas, svg')) return false;
+  return Array.from(allElements).filter(el => {
+    // Skip non-text elements
+    if (el.closest('script, style, code, pre, noscript, svg')) return false;
     
-    const text = el.textContent?.trim();
-    if (!text || text.length < 3) return false;
+    // Only elements that have direct text content (not just child text)
+    const directText = getDirectTextContent(el);
+    if (!directText || directText.length < 3) return false;
     
-    // Avoid elements that are likely navigation or UI
-    const classList = Array.from(el.classList);
-    const skipClasses = ['nav', 'menu', 'header', 'footer', 'sidebar', 'toolbar'];
-    if (skipClasses.some(cls => classList.some(c => c.includes(cls)))) return false;
+    // Skip hidden elements
+    if (!isElementVisible(el)) return false;
+    
+    // Skip elements that contain only child elements (no direct text)
+    const hasOnlyChildElements = el.children.length > 0 && !directText.trim();
+    if (hasOnlyChildElements) return false;
     
     return true;
   });
+}
+
+/**
+ * Get only the direct text content of an element (not including children)
+ * @param {Element} element - Element to check
+ * @returns {string} Direct text content
+ */
+function getDirectTextContent(element) {
+  let text = '';
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent;
+    }
+  }
+  return text.trim();
 }
 
 function extractCleanText() {
@@ -97,72 +117,66 @@ async function handleTranslatePage(message, sendResponse) {
   try {
     const { sourceLanguage, targetLanguage } = message;
     
-    // Show loading state
-    showTranslationLoading();
+    console.log('🚀 Starting streaming translation:', { sourceLanguage, targetLanguage });
     
-    // Extract content if not already done
-    const content = extractPageContent();
-    
-    // Send to background script for API processing
-    const response = await chrome.runtime.sendMessage({
-      action: 'processTranslation',
-      content: content.text,
+    // Notify sidepanel that translation has started
+    chrome.runtime.sendMessage({
+      action: 'translationStarted',
       sourceLanguage,
-      targetLanguage,
-      pageUrl: content.url
-    });
+      targetLanguage
+    }).catch(() => {}); // Ignore if sidepanel not open
     
-    if (response.success) {
-      // Apply translations to page
-      await applyTranslations(response.translations);
-      
-      // Generate and display summary
-      if (response.summary) {
-        chrome.runtime.sendMessage({
-          action: 'updateSummary',
-          summary: response.summary
-        });
-      }
-      
-      hideTranslationLoading();
-      sendResponse({ success: true });
-    } else {
-      throw new Error(response.error || 'Translation failed');
+    // Store current translation state
+    currentTranslation = { sourceLanguage, targetLanguage, isActive: true };
+    
+    // Extract content and get text elements
+    const content = extractPageContent();
+    const textElements = getTextElements();
+    
+    // Store original content for potential restoration
+    if (!isTranslated) {
+      textElements.forEach(element => {
+        const originalText = getDirectTextContent(element);
+        if (originalText) {
+          originalContent.set(element, originalText);
+        }
+      });
     }
     
+    // Start summary generation in parallel (non-blocking)
+    generateSummaryAsync(content.text, targetLanguage, content.url);
+    
+    // Process elements in chunks for streaming translation
+    await processElementsInStreaming(textElements, sourceLanguage, targetLanguage);
+    
+    // Mark as translated and start observing for dynamic content
+    isTranslated = true;
+    startObservingChanges();
+    
+    // Notify sidepanel that translation completed
+    chrome.runtime.sendMessage({
+      action: 'translationComplete',
+      message: 'Page translation completed successfully'
+    }).catch(() => {}); // Ignore if sidepanel not open
+    
+    console.log('✅ Streaming translation completed');
+    sendResponse({ success: true });
+    
   } catch (error) {
-    console.error('Translation error:', error);
-    hideTranslationLoading();
+    console.error('❌ Streaming translation error:', error);
+    currentTranslation = null;
+    
+    // Notify sidepanel of error
+    chrome.runtime.sendMessage({
+      action: 'translationError',
+      error: error.message
+    }).catch(() => {}); // Ignore if sidepanel not open
+    
     sendResponse({ success: false, error: error.message });
   }
 }
 
-function showTranslationLoading() {
-  // Create or show loading overlay
-  let overlay = document.getElementById('translation-loading-overlay');
-  
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'translation-loading-overlay';
-    overlay.className = 'translation-loading-overlay';
-    overlay.innerHTML = `
-      <div class="loading-content">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Translating page...</div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-  }
-  
-  overlay.style.display = 'flex';
-}
-
-function hideTranslationLoading() {
-  const overlay = document.getElementById('translation-loading-overlay');
-  if (overlay) {
-    overlay.style.display = 'none';
-  }
-}
+// Removed blocking overlay functions - using streaming translation instead
 
 async function applyTranslations(translations) {
   if (!translations || typeof translations !== 'object') return;
@@ -171,19 +185,19 @@ async function applyTranslations(translations) {
   
   // Store original content for restoration
   if (!isTranslated) {
-    textElements.forEach((element, index) => {
-      const originalText = element.textContent;
+    textElements.forEach(element => {
+      const originalText = getDirectTextContent(element);
       if (originalText && originalText.trim()) {
         originalContent.set(element, originalText);
       }
     });
   }
   
-  // Apply translations
+  // Apply translations using direct text content
   textElements.forEach(element => {
-    const originalText = element.textContent?.trim();
+    const originalText = getDirectTextContent(element);
     if (originalText && translations[originalText]) {
-      element.textContent = translations[originalText];
+      replaceDirectTextContent(element, translations[originalText]);
       element.classList.add('translated-text');
     }
   });
@@ -198,52 +212,62 @@ function startObservingChanges() {
   if (observer) observer.disconnect();
   
   observer = new MutationObserver((mutations) => {
+    const newElementsToTranslate = [];
+    
     mutations.forEach(mutation => {
       if (mutation.type === 'childList') {
         mutation.addedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Handle newly added text elements
-            const newTextElements = node.querySelectorAll(
-              'p, h1, h2, h3, h4, h5, h6, span, div, a, li, td, th, label, button'
-            );
+            // Check the node itself and all its descendants
+            const elementsToCheck = [node, ...node.querySelectorAll('*')];
             
-            newTextElements.forEach(element => {
-              const text = element.textContent?.trim();
-              if (text && text.length > 3 && isTranslated) {
-                // Request translation for new content
-                requestDynamicTranslation(element, text);
+            elementsToCheck.forEach(element => {
+              const directText = getDirectTextContent(element);
+              if (directText && directText.length > 3 && shouldTranslateText(directText) && isElementVisible(element)) {
+                newElementsToTranslate.push(element);
               }
             });
+          } else if (node.nodeType === Node.TEXT_NODE) {
+            // Handle direct text node additions
+            const text = node.textContent?.trim();
+            if (text && text.length > 3 && shouldTranslateText(text)) {
+              const parentElement = node.parentElement;
+              if (parentElement && isElementVisible(parentElement)) {
+                newElementsToTranslate.push(parentElement);
+              }
+            }
           }
         });
       }
     });
+    
+    // Translate new elements if we have any and translation is active
+    if (newElementsToTranslate.length > 0 && isTranslated && currentTranslation?.isActive) {
+      console.log(`🔄 Found ${newElementsToTranslate.length} new elements to translate`);
+      translateNewElements(newElementsToTranslate);
+    }
   });
   
   observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
+    characterData: true // Also watch for text changes
   });
 }
 
-async function requestDynamicTranslation(element, text) {
+/**
+ * Translate newly discovered elements
+ * @param {Array} elements - New elements to translate
+ */
+async function translateNewElements(elements) {
   try {
-    const response = await chrome.runtime.sendMessage({
-      action: 'translateText',
-      text: text,
-      sourceLanguage: 'auto',
-      targetLanguage: getCurrentTargetLanguage()
-    });
-    
-    if (response.success && response.translatedText) {
-      originalContent.set(element, text);
-      element.textContent = response.translatedText;
-      element.classList.add('translated-text');
-    }
+    await processBatch(elements, currentTranslation.sourceLanguage, currentTranslation.targetLanguage, 'NEW', 1);
   } catch (error) {
-    console.error('Dynamic translation error:', error);
+    console.error('❌ Failed to translate new elements:', error);
   }
 }
+
+// Removed requestDynamicTranslation - now handled by translateNewElements
 
 function getCurrentTargetLanguage() {
   // Get current target language from storage or default
@@ -262,12 +286,13 @@ function handleToggleTranslation() {
 function restoreOriginalContent() {
   originalContent.forEach((originalText, element) => {
     if (element && element.parentNode) {
-      element.textContent = originalText;
+      replaceDirectTextContent(element, originalText);
       element.classList.remove('translated-text');
     }
   });
   
   isTranslated = false;
+  currentTranslation = null;
   
   if (observer) {
     observer.disconnect();
@@ -277,9 +302,16 @@ function restoreOriginalContent() {
 
 // Utility functions
 function isElementVisible(element) {
+  // Check if element is visible in the DOM
+  if (!element || !element.parentNode) return false;
+  
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    return false;
+  }
+  
   const rect = element.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 &&
-         rect.top < window.innerHeight && rect.bottom > 0;
+  return rect.width > 0 && rect.height > 0;
 }
 
 function shouldTranslateElement(element) {
@@ -312,6 +344,202 @@ function handleError(error, context) {
     context: context,
     url: window.location.href
   });
+}
+
+// =============================================================================
+// STREAMING TRANSLATION FUNCTIONS
+// =============================================================================
+
+/**
+ * Process text elements in streaming mode - translate progressively without blocking
+ * @param {Array} elements - Text elements to translate
+ * @param {string} sourceLanguage - Source language
+ * @param {string} targetLanguage - Target language
+ */
+async function processElementsInStreaming(elements, sourceLanguage, targetLanguage) {
+  console.log(`🔄 Processing ${elements.length} elements in streaming mode`);
+  
+  // Filter elements that actually have translatable text
+  const translatableElements = elements.filter(el => {
+    const directText = getDirectTextContent(el);
+    return directText && shouldTranslateText(directText);
+  });
+  
+  console.log(`📝 Found ${translatableElements.length} elements with translatable text out of ${elements.length} total`);
+  
+  if (translatableElements.length === 0) {
+    console.log('⚠️ No translatable content found on this page');
+    return;
+  }
+  
+  // Group elements into small batches
+  const batchSize = 8;
+  const batches = [];
+  
+  for (let i = 0; i < translatableElements.length; i += batchSize) {
+    batches.push(translatableElements.slice(i, i + batchSize));
+  }
+  
+  console.log(`📦 Created ${batches.length} batches for processing`);
+  
+  // Process batches with small delays to maintain responsiveness
+  for (let i = 0; i < batches.length; i++) {
+    if (!currentTranslation?.isActive) {
+      console.log('🛑 Translation cancelled');
+      break;
+    }
+    
+    const batch = batches[i];
+    await processBatch(batch, sourceLanguage, targetLanguage, i + 1, batches.length);
+    
+    // Small delay between batches to keep page responsive
+    if (i < batches.length - 1) {
+      await sleep(100); // 100ms delay
+    }
+  }
+}
+
+/**
+ * Process a single batch of elements
+ * @param {Array} elements - Elements in this batch
+ * @param {string} sourceLanguage - Source language
+ * @param {string} targetLanguage - Target language
+ * @param {number} batchNum - Current batch number
+ * @param {number} totalBatches - Total number of batches
+ */
+async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, totalBatches) {
+  console.log(`📝 Processing batch ${batchNum}/${totalBatches} (${elements.length} elements)`);
+  
+  // Extract direct text from elements (not including children)
+  const textMap = new Map();
+  const textsToTranslate = [];
+  
+  elements.forEach(element => {
+    const directText = getDirectTextContent(element);
+    if (directText && shouldTranslateText(directText)) {
+      textMap.set(directText, element);
+      textsToTranslate.push(directText);
+    }
+  });
+  
+  if (textsToTranslate.length === 0) {
+    console.log(`⏭️ Batch ${batchNum} - no translatable text found`);
+    return;
+  }
+  
+  // Combine texts for efficient API call
+  const combinedText = textsToTranslate.join('\n---SEPARATOR---\n');
+  
+  try {
+    // Send to background for translation (no visual feedback)
+    const response = await chrome.runtime.sendMessage({
+      action: 'translateText',
+      text: combinedText,
+      sourceLanguage,
+      targetLanguage
+    });
+    
+    if (response.success && response.translatedText) {
+      // Split the response back into individual translations
+      const translatedParts = response.translatedText.split('\n---SEPARATOR---\n');
+      
+      // Apply translations immediately to direct text content
+      textsToTranslate.forEach((originalText, index) => {
+        const element = textMap.get(originalText);
+        const translatedText = translatedParts[index]?.trim();
+        
+        if (element && translatedText && translatedText !== originalText) {
+          // Replace only the direct text content, preserving child elements
+          replaceDirectTextContent(element, translatedText);
+          element.classList.add('translated-text');
+        }
+      });
+      
+      console.log(`✅ Batch ${batchNum} completed - translated ${translatedParts.length} texts`);
+    } else {
+      throw new Error(response.error || 'Translation failed');
+    }
+    
+  } catch (error) {
+    console.error(`❌ Batch ${batchNum} failed:`, error);
+  }
+}
+
+/**
+ * Replace only the direct text content of an element, preserving child elements
+ * @param {Element} element - Element to update
+ * @param {string} newText - New text content
+ */
+function replaceDirectTextContent(element, newText) {
+  // Find and replace only text nodes
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+      node.textContent = newText;
+      break; // Replace only the first text node
+    }
+  }
+}
+
+/**
+ * Generate summary asynchronously without blocking translation
+ * @param {string} content - Page content
+ * @param {string} targetLanguage - Target language
+ * @param {string} pageUrl - Page URL
+ */
+async function generateSummaryAsync(content, targetLanguage, pageUrl) {
+  try {
+    console.log('📋 Generating summary in parallel...');
+    
+    const response = await chrome.runtime.sendMessage({
+      action: 'processTranslation',
+      content: content.substring(0, 3000), // Limit content for summary
+      sourceLanguage: 'auto',
+      targetLanguage,
+      pageUrl
+    });
+    
+    if (response.success && response.summary) {
+      chrome.runtime.sendMessage({
+        action: 'updateSummary',
+        summary: response.summary
+      });
+      console.log('📋 Summary generated successfully');
+    }
+  } catch (error) {
+    console.error('❌ Summary generation failed:', error);
+  }
+}
+
+/**
+ * Check if text should be translated
+ * @param {string} text - Text to check
+ * @returns {boolean} True if should translate
+ */
+function shouldTranslateText(text) {
+  if (!text || text.length < 3) return false;
+  
+  // Skip common UI elements that shouldn't be translated
+  const skipPatterns = [
+    /^[\d\s\-\+\*\/\=\(\)]+$/, // Only numbers and math symbols
+    /^[A-Z]{2,}$/, // All caps abbreviations
+    /^\w+\.(com|org|net|edu|gov)/, // URLs
+    /^@\w+/, // Usernames
+    /^#\w+/, // Hashtags
+    /^\$[\d,]+/, // Prices
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}/, // Dates
+    /^[\d\-\+\(\)\s]+$/ // Phone numbers
+  ];
+  
+  return !skipPatterns.some(pattern => pattern.test(text.trim()));
+}
+
+/**
+ * Sleep for specified milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise} Promise that resolves after delay
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Cleanup on page unload

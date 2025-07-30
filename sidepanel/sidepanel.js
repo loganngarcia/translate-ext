@@ -56,6 +56,7 @@ const CONFIG = {
   MESSAGES: {
     TRANSLATE_PAGE: 'translatePage',
     UPDATE_SUMMARY: 'updateSummary',
+    TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',
     PAGE_CONTENT_EXTRACTED: 'pageContentExtracted'
@@ -831,11 +832,20 @@ class EventManager {
             this.handleSummaryUpdate(message.summary);
             break;
             
+          case CONFIG.MESSAGES.TRANSLATION_STARTED:
+            Logger.info('Streaming translation started', 'EventManager');
+            this.stateManager.set('isTranslating', true);
+            break;
+            
           case CONFIG.MESSAGES.TRANSLATION_COMPLETE:
+            Logger.info('Streaming translation completed', 'EventManager');
+            this.stateManager.set('isTranslating', false);
             this.handleTranslationComplete(message);
             break;
             
           case CONFIG.MESSAGES.TRANSLATION_ERROR:
+            Logger.error('Translation error received', message.error, 'EventManager');
+            this.stateManager.set('isTranslating', false);
             this.handleTranslationError(message.error);
             break;
             
@@ -1151,10 +1161,13 @@ class SidepanelApp {
     try {
       const preferences = await StorageManager.loadUserPreferences();
       
-      // Update state with loaded preferences
+      // Update state with loaded preferences (this will trigger UI update)
       this.stateManager.set('targetLanguage', preferences.targetLanguage);
       
-      Logger.info('User preferences loaded and applied', 'SidepanelApp');
+      // Ensure UI reflects the loaded language immediately
+      this.uiManager.updateLanguageSelector(preferences.targetLanguage);
+      
+      Logger.info(`User preferences loaded: language=${preferences.targetLanguage}`, 'SidepanelApp');
     } catch (error) {
       Logger.error('Failed to load user preferences', error, 'SidepanelApp');
       // Continue with defaults

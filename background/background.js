@@ -62,6 +62,7 @@ const CONFIG = {
     PROCESS_TRANSLATION: 'processTranslation',
     TRANSLATE_TEXT: 'translateText',
     UPDATE_SUMMARY: 'updateSummary',
+    TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',
     PAGE_CONTENT_EXTRACTED: 'pageContentExtracted',
@@ -969,10 +970,37 @@ class MessageRouter {
         throw new Error('Missing required parameters: text and targetLanguage');
       }
 
-      const translations = await this.apiManager.translateContent(text, sourceLanguage, targetLanguage);
-      const translatedText = translations[text] || text;
+      Logger.debug(`Translating batch text (${text.length} chars)`, null, 'MessageRouter');
 
-      sendResponse({ success: true, translatedText });
+      // Check if this is a combined text with separators (from streaming)
+      const hasSeparators = text.includes('\n---SEPARATOR---\n');
+      
+      const translations = await this.apiManager.translateContent(text, sourceLanguage, targetLanguage);
+      
+      if (hasSeparators) {
+        // Handle combined text from streaming - reconstruct translated parts
+        const parts = text.split('\n---SEPARATOR---\n');
+        const translatedParts = parts.map(part => {
+          const trimmedPart = part.trim();
+          // Try to find translation for this part
+          const translated = translations[trimmedPart] || 
+                            translations[part] || 
+                            Object.keys(translations).find(key => key.includes(trimmedPart.substring(0, 20)));
+          
+          return translations[translated] || translated || trimmedPart;
+        });
+        
+        const translatedText = translatedParts.join('\n---SEPARATOR---\n');
+        sendResponse({ success: true, translatedText });
+      } else {
+        // Handle single text - find best match
+        const translatedText = translations[text] || 
+                              translations[text.trim()] ||
+                              Object.values(translations)[0] || 
+                              text;
+        sendResponse({ success: true, translatedText });
+      }
+      
     } catch (error) {
       Logger.error('Failed to translate text', error, 'MessageRouter');
       sendResponse({ success: false, error: error.message });
