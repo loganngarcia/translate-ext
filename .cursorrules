@@ -1,7 +1,7 @@
 # Chrome Translation Extension Cursor Rules
 
 ## Project Overview
-A Chrome sidepanel extension that translates web pages using AWS OpenAI API. Features include:
+A Chrome sidepanel extension that translates web pages using AWS Nova-lite 1.0. Features include:
 - Real-time page translation with overlay
 - AI-powered summary generation
 - Language detection and selection
@@ -10,9 +10,9 @@ A Chrome sidepanel extension that translates web pages using AWS OpenAI API. Fea
 
 ## Technology Stack
 - **Frontend**: Vanilla JavaScript, HTML5, CSS3
-- **Backend**: AWS Lambda (OpenAI API proxy)
+- **Backend**: AWS Lambda + AWS Bedrock with Nova-lite 1.0
 - **Chrome APIs**: Extension APIs, sidepanel, activeTab, storage
-- **AI**: OpenAI GPT-4.1-mini for translation and summarization
+- **AI**: AWS Nova-lite 1.0 with structured tool calling via Bedrock
 
 ## Architecture Guidelines
 
@@ -51,7 +51,7 @@ A Chrome sidepanel extension that translates web pages using AWS OpenAI API. Fea
 
 #### 3. Background Service Worker
 - Coordinate between sidepanel and content script
-- Manage AWS API calls
+- Manage AWS Bedrock API calls
 - Handle extension lifecycle events
 
 ## Development Rules
@@ -143,40 +143,48 @@ chrome.tabs.sendMessage(tabId, {
 chrome.storage.sync.set({ preferredLanguage: 'English' });
 ```
 
-### AWS Integration
+### AWS Bedrock Integration
 ```javascript
-// Lambda function structure
-exports.handler = async (event) => {
-  const { action, content, sourceLanguage, targetLanguage } = JSON.parse(event.body);
-  
-  if (action === 'translate') {
-    return await translateText(content, sourceLanguage, targetLanguage);
-  } else if (action === 'summarize') {
-    return await generateSummary(content, targetLanguage);
+// Lambda function with Nova-lite through Bedrock
+const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+
+const bedrockClient = new BedrockRuntimeClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+});
+
+// Nova-lite model invocation
+await bedrockClient.send(new InvokeModelCommand({
+  modelId: 'us.amazon.nova-lite-v1:0',
+  body: JSON.stringify({
+    schemaVersion: "messages-v1",
+    toolConfig: { tools: [translationTool] }
+  })
+}));
+
+// Tool definition for Nova-lite
+const translationTool = {
+  toolSpec: {
+    name: "provide_translation",
+    description: "Provide translations for text segments",
+    inputSchema: {
+      json: {
+        type: "object",
+        properties: {
+          translations: {
+            type: "object",
+            description: "Object mapping original text to translated text"
+          }
+        }
+      }
+    }
   }
-};
-
-// Frontend API calls
-const AWS_ENDPOINT = 'https://your-api-gateway-url.amazonaws.com/prod';
-
-const translatePage = async (content, sourceLang, targetLang) => {
-  const response = await fetch(`${AWS_ENDPOINT}/translate`, {
-    method: 'POST',
-    body: JSON.stringify({
-      action: 'translate',
-      content,
-      sourceLanguage: sourceLang,
-      targetLanguage: targetLang
-    })
-  });
-  return response.json();
 };
 ```
 
 ## Feature Implementation
 
 ### Language Detection & Selection
-- Use OpenAI for automatic language detection
+- Use AWS Nova-lite for automatic language detection
 - Provide dropdown with 50+ languages
 - Remember user preferences in chrome.storage
 - Show current selection in UI
@@ -235,7 +243,7 @@ const retryApiCall = async (apiFunction, maxRetries = 3) => {
 - Use requestIdleCallback for non-critical operations
 
 ## Security Guidelines
-- Never store API keys in extension code
+- No API keys required - uses AWS IAM roles
 - Validate all user inputs before API calls
 - Use content security policy in manifest
 - Sanitize all DOM insertions

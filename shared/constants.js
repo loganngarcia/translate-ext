@@ -28,9 +28,9 @@ export const API = {
     DETECT_LANGUAGE: '/detect-language'
   },
   
-  /** OpenAI model configuration */
-  OPENAI: {
-    MODEL: 'gpt-4o-mini',
+  /** AWS Nova-lite model configuration */
+  NOVA: {
+    MODEL_ID: 'us.amazon.nova-lite-v1:0',
     MAX_TOKENS: 4000,
     TEMPERATURE: 0.3,
     MAX_CONTENT_LENGTH: 10000

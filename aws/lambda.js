@@ -1,89 +1,92 @@
 // AWS Lambda function for Chrome translation extension
-// Handles OpenAI API integration for translation and summarization using modern API
+// Handles AWS Nova-lite 1.0 integration for translation and summarization using Bedrock
 
-const OpenAI = require('openai');
+const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 // Configuration
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const bedrockClient = new BedrockRuntimeClient({
+  region: process.env.AWS_REGION || 'us-east-1',
 });
 
-const OPENAI_MODEL = 'gpt-4o-mini';
+const NOVA_LITE_MODEL_ID = 'us.amazon.nova-lite-v1:0';
 const MAX_TOKENS = 4000;
 const TEMPERATURE = 0.3;
 
-// Function definitions for OpenAI tool calling
+// Tool definitions for AWS Bedrock Nova-lite tool calling
 const translationTool = {
-  type: "function",
-  function: {
+  toolSpec: {
     name: "provide_translation",
     description: "Provide translations for text segments",
-    parameters: {
-      type: "object",
-      properties: {
-        translations: {
-          type: "object",
-          description: "Object mapping original text to translated text",
-          additionalProperties: {
-            type: "string"
+    inputSchema: {
+      json: {
+        type: "object",
+        properties: {
+          translations: {
+            type: "object",
+            description: "Object mapping original text to translated text",
+            additionalProperties: {
+              type: "string"
+            }
           }
-        }
-      },
-      required: ["translations"]
+        },
+        required: ["translations"]
+      }
     }
   }
 };
 
 const summaryTool = {
-  type: "function",
-  function: {
+  toolSpec: {
     name: "provide_summary",
     description: "Provide a structured summary of web content",
-    parameters: {
-      type: "object",
-      properties: {
-        title: {
-          type: "string",
-          description: "Brief title for the summary"
-        },
-        points: {
-          type: "array",
-          description: "Array of key points with emojis",
-          items: {
-            type: "object",
-            properties: {
-              emoji: {
-                type: "string",
-                description: "Relevant emoji for the point"
+    inputSchema: {
+      json: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Brief title for the summary"
+          },
+          points: {
+            type: "array",
+            description: "Array of key points with emojis",
+            items: {
+              type: "object",
+              properties: {
+                emoji: {
+                  type: "string",
+                  description: "Relevant emoji for the point"
+                },
+                text: {
+                  type: "string",
+                  description: "Summary text for the point"
+                }
               },
-              text: {
-                type: "string",
-                description: "Summary text for the point"
-              }
-            },
-            required: ["emoji", "text"]
+              required: ["emoji", "text"]
+            }
           }
-        }
-      },
-      required: ["title", "points"]
+        },
+        required: ["title", "points"]
+      }
     }
   }
 };
 
 const languageDetectionTool = {
-  type: "function",
-  function: {
+  toolSpec: {
     name: "detect_language",
     description: "Detect the language of the provided text",
-    parameters: {
-      type: "object",
-      properties: {
-        detectedLanguage: {
-          type: "string",
-          description: "The name of the detected language in English"
-        }
-      },
-      required: ["detectedLanguage"]
+    inputSchema: {
+      json: {
+        type: "object",
+        properties: {
+          detectedLanguage: {
+            type: "string",
+            description: "The name of the detected language in English"
+          }
+        },
+        required: ["detectedLanguage"]
+      }
     }
   }
 };
@@ -109,7 +112,7 @@ exports.handler = async (event) => {
   try {
     // Parse request body
     const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
-    const { action, content, sourceLanguage, targetLanguage, model, pageUrl } = body;
+    const { action, content, sourceLanguage, targetLanguage, pageUrl } = body;
 
     // Validate input
     if (!action || !content) {
@@ -164,29 +167,29 @@ async function handleTranslation(content, sourceLanguage, targetLanguage) {
     const prompt = createTranslationPrompt(chunk, sourceLanguage, targetLanguage);
     
     try {
-      const response = await openai.chat.completions.create({
-        model: OPENAI_MODEL,
+      const response = await invokeNovaModel({
+        system: `You are a professional translator. When given text to translate, use the provide_translation tool to return translations. Translate text while preserving meaning, tone, and context. If the text is already in ${targetLanguage}, return it unchanged. Split the text into logical segments (sentences or phrases) and provide translations for each segment.`,
         messages: [
           {
-            role: 'system',
-            content: `You are a professional translator. When given text to translate, use the provide_translation function to return translations. Translate text while preserving meaning, tone, and context. If the text is already in ${targetLanguage}, return it unchanged. Split the text into logical segments (sentences or phrases) and provide translations for each segment.`
-          },
-          {
             role: 'user',
-            content: prompt
+            content: [{ text: prompt }]
           }
         ],
-        tools: [translationTool],
-        tool_choice: { type: "function", function: { name: "provide_translation" } },
-        max_tokens: MAX_TOKENS,
-        temperature: TEMPERATURE
+        toolConfig: {
+          tools: [translationTool],
+          toolChoice: {
+            tool: {
+              name: "provide_translation"
+            }
+          }
+        }
       });
 
-      const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+      const toolUse = extractToolUse(response);
       
-      if (toolCall && toolCall.function.name === 'provide_translation') {
+      if (toolUse && toolUse.name === 'provide_translation') {
         try {
-          const functionResult = JSON.parse(toolCall.function.arguments);
+          const functionResult = toolUse.input;
           if (functionResult.translations) {
             Object.assign(allTranslations, functionResult.translations);
           }
@@ -208,29 +211,29 @@ async function handleSummarization(content, targetLanguage, pageUrl) {
   const prompt = createSummarizationPrompt(content, targetLanguage, pageUrl);
   
   try {
-    const response = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
+    const response = await invokeNovaModel({
+      system: `You are an AI assistant that creates concise, helpful summaries of web content. Use the provide_summary tool to return a structured summary with 3-5 key points, each with an appropriate emoji. Write in ${targetLanguage}.`,
       messages: [
         {
-          role: 'system',
-          content: `You are an AI assistant that creates concise, helpful summaries of web content. Use the provide_summary function to return a structured summary with 3-5 key points, each with an appropriate emoji. Write in ${targetLanguage}.`
-        },
-        {
           role: 'user',
-          content: prompt
+          content: [{ text: prompt }]
         }
       ],
-      tools: [summaryTool],
-      tool_choice: { type: "function", function: { name: "provide_summary" } },
-      max_tokens: 800,
-      temperature: 0.5
+      toolConfig: {
+        tools: [summaryTool],
+        toolChoice: {
+          tool: {
+            name: "provide_summary"
+          }
+        }
+      }
     });
 
-    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+    const toolUse = extractToolUse(response);
     
-    if (toolCall && toolCall.function.name === 'provide_summary') {
+    if (toolUse && toolUse.name === 'provide_summary') {
       try {
-        const functionResult = JSON.parse(toolCall.function.arguments);
+        const functionResult = toolUse.input;
         
         // Validate summary structure
         if (functionResult.title && Array.isArray(functionResult.points)) {
@@ -262,29 +265,29 @@ async function handleLanguageDetection(content) {
   const prompt = `Detect the language of this text: "${content.substring(0, 500)}"`;
   
   try {
-    const response = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
+    const response = await invokeNovaModel({
+      system: 'You are a language detection expert. Use the detect_language tool to return the detected language name in English.',
       messages: [
         {
-          role: 'system',
-          content: 'You are a language detection expert. Use the detect_language function to return the detected language name in English.'
-        },
-        {
           role: 'user',
-          content: prompt
+          content: [{ text: prompt }]
         }
       ],
-      tools: [languageDetectionTool],
-      tool_choice: { type: "function", function: { name: "detect_language" } },
-      max_tokens: 50,
-      temperature: 0.1
+      toolConfig: {
+        tools: [languageDetectionTool],
+        toolChoice: {
+          tool: {
+            name: "detect_language"
+          }
+        }
+      }
     });
 
-    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+    const toolUse = extractToolUse(response);
     
-    if (toolCall && toolCall.function.name === 'detect_language') {
+    if (toolUse && toolUse.name === 'detect_language') {
       try {
-        const functionResult = JSON.parse(toolCall.function.arguments);
+        const functionResult = toolUse.input;
         return { detectedLanguage: functionResult.detectedLanguage };
       } catch (parseError) {
         console.error('Failed to parse language detection result:', parseError);
@@ -296,6 +299,71 @@ async function handleLanguageDetection(content) {
   } catch (error) {
     console.error('Language detection error:', error);
     return { detectedLanguage: 'Unknown' };
+  }
+}
+
+// Core function to invoke Nova-lite model via Bedrock
+async function invokeNovaModel({ system, messages, toolConfig }) {
+  const requestBody = {
+    schemaVersion: "messages-v1",
+    system: [{ text: system }],
+    messages,
+    inferenceConfig: {
+      maxTokens: MAX_TOKENS,
+      temperature: TEMPERATURE,
+      topP: 0.9
+    }
+  };
+
+  // Add tool configuration if provided
+  if (toolConfig) {
+    requestBody.toolConfig = toolConfig;
+  }
+
+  const command = new InvokeModelCommand({
+    modelId: NOVA_LITE_MODEL_ID,
+    body: JSON.stringify(requestBody),
+    contentType: 'application/json',
+    accept: 'application/json'
+  });
+
+  try {
+    const response = await bedrockClient.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    
+    if (responseBody.stopReason === 'tool_use') {
+      return responseBody;
+    }
+    
+    // Handle non-tool responses
+    if (responseBody.output && responseBody.output.message) {
+      return responseBody;
+    }
+    
+    throw new Error('Unexpected response format from Nova-lite');
+  } catch (error) {
+    console.error('Error invoking Nova-lite:', error);
+    throw error;
+  }
+}
+
+// Extract tool use from Nova-lite response
+function extractToolUse(response) {
+  try {
+    if (response.output && response.output.message && response.output.message.content) {
+      for (const contentBlock of response.output.message.content) {
+        if (contentBlock.toolUse) {
+          return {
+            name: contentBlock.toolUse.name,
+            input: contentBlock.toolUse.input
+          };
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error extracting tool use:', error);
+    return null;
   }
 }
 

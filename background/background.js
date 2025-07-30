@@ -42,9 +42,9 @@ const CONFIG = {
     RETRY_DELAY: 1000 // milliseconds
   },
 
-  // OpenAI model settings
-  OPENAI: {
-    MODEL: 'gpt-4o-mini',
+  // AWS Nova-lite model settings
+  NOVA: {
+    MODEL_ID: 'us.amazon.nova-lite-v1:0',
     MAX_TOKENS: 4000,
     TEMPERATURE: 0.3
   },
@@ -711,7 +711,7 @@ class APIManager {
       content,
       sourceLanguage,
       targetLanguage,
-      model: CONFIG.OPENAI.MODEL
+      model: CONFIG.NOVA.MODEL_ID
     };
 
     const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.TRANSLATE, requestData);
@@ -731,7 +731,7 @@ class APIManager {
       content,
       targetLanguage,
       pageUrl,
-      model: CONFIG.OPENAI.MODEL
+      model: CONFIG.NOVA.MODEL_ID
     };
 
     const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.SUMMARIZE, requestData);
@@ -1326,5 +1326,4 @@ chrome.runtime.onSuspend.addListener(() => {
 // Initialize immediately if not already running
 if (!backgroundApp) {
   initializeBackground();
-} 
 } 
