@@ -31,7 +31,7 @@
 const CONFIG = {
   // AWS API configuration
   API: {
-    BASE_URL: 'https://your-api-gateway-url.amazonaws.com/prod',
+    BASE_URL: 'https://xqcgj6knsd.execute-api.us-west-2.amazonaws.com/dev',
     ENDPOINTS: {
       TRANSLATE: '/translate',
       SUMMARIZE: '/summarize',
