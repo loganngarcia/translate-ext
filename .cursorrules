@@ -1,0 +1,263 @@
+# Chrome Translation Extension Cursor Rules
+
+## Project Overview
+A Chrome sidepanel extension that translates web pages using AWS OpenAI API. Features include:
+- Real-time page translation with overlay
+- AI-powered summary generation
+- Language detection and selection
+- Text-to-speech functionality
+- Copy/clipboard integration
+
+## Technology Stack
+- **Frontend**: Vanilla JavaScript, HTML5, CSS3
+- **Backend**: AWS Lambda (OpenAI API proxy)
+- **Chrome APIs**: Extension APIs, sidepanel, activeTab, storage
+- **AI**: OpenAI GPT-4.1-mini for translation and summarization
+
+## Architecture Guidelines
+
+### File Structure
+```
+/
+├── manifest.json          # Extension manifest v3
+├── sidepanel/
+│   ├── sidepanel.html     # Main UI (360x670px)
+│   ├── sidepanel.js       # Core logic
+│   └── sidepanel.css      # Styling
+├── content/
+│   ├── content.js         # Page content extraction & overlay
+│   └── overlay.css        # Translation overlay styles
+├── background/
+│   └── background.js      # Service worker
+├── aws/
+│   └── lambda.js          # AWS Lambda function
+└── assets/
+    └── icons/             # Extension icons
+```
+
+### Core Components
+
+#### 1. Sidepanel UI (360x670px)
+- **Language Selector**: Auto-detect → Target language dropdown
+- **AI Overview**: Generated summary with emoji bullets
+- **Control Buttons**: Copy, TTS, Stop TTS with proper state management
+- **Translate Button**: Main CTA (48px height, blue #277AD9)
+
+#### 2. Content Script
+- Extract all text content from active tab
+- Create translation overlay that preserves original layout
+- Handle dynamic content updates
+- Manage visual feedback during translation
+
+#### 3. Background Service Worker
+- Coordinate between sidepanel and content script
+- Manage AWS API calls
+- Handle extension lifecycle events
+
+## Development Rules
+
+### JavaScript (Vanilla Only)
+```javascript
+// Use modern ES6+ features
+const apiCall = async (endpoint, data) => {
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
+};
+
+// DOM manipulation without jQuery
+document.addEventListener('DOMContentLoaded', () => {
+  initializeExtension();
+});
+
+// State management with objects
+const appState = {
+  currentLanguage: 'auto',
+  targetLanguage: 'English',
+  isTranslating: false,
+  isSpeaking: false
+};
+```
+
+### CSS Guidelines
+```css
+/* Mobile-first responsive design */
+.sidepanel {
+  width: 360px;
+  height: 670px;
+  background: #FCFCFC;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Button states with proper feedback */
+.translate-btn {
+  background: #277AD9;
+  border-radius: 50px;
+  transition: all 0.2s ease;
+}
+
+.translate-btn:hover {
+  background: #1e6bc7;
+  transform: translateY(-1px);
+}
+
+.translate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Icon buttons with consistent sizing */
+.icon-btn {
+  width: 18px;
+  height: 18px;
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}
+
+.icon-btn:hover {
+  opacity: 0.8;
+}
+```
+
+### Chrome Extension APIs
+```javascript
+// Sidepanel management
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
+// Content script communication
+chrome.tabs.sendMessage(tabId, {
+  action: 'translatePage',
+  sourceLanguage: 'auto',
+  targetLanguage: 'English'
+});
+
+// Storage for user preferences
+chrome.storage.sync.set({ preferredLanguage: 'English' });
+```
+
+### AWS Integration
+```javascript
+// Lambda function structure
+exports.handler = async (event) => {
+  const { action, content, sourceLanguage, targetLanguage } = JSON.parse(event.body);
+  
+  if (action === 'translate') {
+    return await translateText(content, sourceLanguage, targetLanguage);
+  } else if (action === 'summarize') {
+    return await generateSummary(content, targetLanguage);
+  }
+};
+
+// Frontend API calls
+const AWS_ENDPOINT = 'https://your-api-gateway-url.amazonaws.com/prod';
+
+const translatePage = async (content, sourceLang, targetLang) => {
+  const response = await fetch(`${AWS_ENDPOINT}/translate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'translate',
+      content,
+      sourceLanguage: sourceLang,
+      targetLanguage: targetLang
+    })
+  });
+  return response.json();
+};
+```
+
+## Feature Implementation
+
+### Language Detection & Selection
+- Use OpenAI for automatic language detection
+- Provide dropdown with 50+ languages
+- Remember user preferences in chrome.storage
+- Show current selection in UI
+
+### Translation Overlay
+- Preserve original page layout exactly
+- Replace text in-place without breaking CSS
+- Handle special elements (inputs, buttons, etc.)
+- Provide visual feedback during translation
+- Allow toggling between original/translated
+
+### AI Summary Generation
+- Extract key points from page content
+- Generate 3-5 bullet points with relevant emojis
+- Format as structured JSON for UI consumption
+- Update summary when page content changes
+
+### Text-to-Speech
+- Use Web Speech API for TTS
+- Provide play/pause/stop controls
+- Handle language-specific pronunciation
+- Show visual feedback during playback
+
+### Copy Functionality
+- Copy summary text without markdown
+- Show checkmark feedback for 2 seconds
+- Handle clipboard permissions properly
+
+## Error Handling
+```javascript
+// Graceful error handling
+const handleApiError = (error) => {
+  console.error('Translation failed:', error);
+  showNotification('Translation failed. Please try again.', 'error');
+  updateButtonState('idle');
+};
+
+// Retry logic for network issues
+const retryApiCall = async (apiFunction, maxRetries = 3) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await apiFunction();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+};
+```
+
+## Performance Optimization
+- Debounce translation requests for dynamic content
+- Cache translations in chrome.storage.local
+- Lazy load language options
+- Optimize DOM queries with proper selectors
+- Use requestIdleCallback for non-critical operations
+
+## Security Guidelines
+- Never store API keys in extension code
+- Validate all user inputs before API calls
+- Use content security policy in manifest
+- Sanitize all DOM insertions
+- Implement proper CORS handling
+
+## UI/UX Patterns
+- Loading states for all async operations
+- Proper focus management for accessibility
+- Keyboard shortcuts for power users
+- Smooth transitions between states
+- Clear visual hierarchy with Inter font
+
+## Testing Strategy
+- Unit tests for core translation logic
+- Integration tests for Chrome API usage
+- E2E tests for complete user workflows
+- Performance testing for large pages
+- Cross-browser compatibility checks
+
+## Deployment
+- Use Chrome Web Store developer dashboard
+- Implement proper versioning in manifest
+- Test in multiple Chrome versions
+- Monitor extension analytics and errors
+- Provide clear user documentation 
