@@ -889,6 +889,18 @@ class EventManager {
           case CONFIG.MESSAGES.PAGE_CONTENT_EXTRACTED:
             this.handlePageContentExtracted(message.content);
             break;
+
+          case 'continuousTranslationRestarting':
+            this.handleContinuousTranslationRestarting(message);
+            break;
+
+          case 'continuousTranslationRestarted':
+            this.handleContinuousTranslationRestarted(message);
+            break;
+
+          case 'continuousTranslationError':
+            this.handleContinuousTranslationError(message);
+            break;
             
           default:
             Logger.debug(`Unhandled message action: ${message.action}`, null, 'EventManager');
@@ -1127,6 +1139,75 @@ class EventManager {
   handlePageContentExtracted(content) {
     Logger.debug('Page content extracted', content, 'EventManager');
     // Could be used for language detection or other features
+  }
+
+  /**
+   * Handle continuous translation restarting message
+   * @param {Object} message - Message data
+   * @private
+   */
+  handleContinuousTranslationRestarting(message) {
+    const { tabId, sourceLanguage, targetLanguage } = message;
+    const currentTabId = this.stateManager.get('currentTabId');
+    
+    // Only handle if this is for the current tab
+    if (tabId === currentTabId) {
+      Logger.info(`Continuous translation restarting on new page: ${sourceLanguage} → ${targetLanguage}`, 'EventManager');
+      
+      // Update state to show translation is restarting
+      this.stateManager.set('isTranslating', true);
+      
+      // Keep continuous translation enabled and update languages if they changed
+      this.stateManager.set('currentLanguage', sourceLanguage);
+      this.stateManager.set('targetLanguage', targetLanguage);
+      
+      // Clear any existing summary since we're on a new page
+      this.stateManager.set('currentSummary', null);
+      this.uiManager.toggleAIOverview(false);
+    }
+  }
+
+  /**
+   * Handle continuous translation restarted message
+   * @param {Object} message - Message data
+   * @private
+   */
+  handleContinuousTranslationRestarted(message) {
+    const { tabId, sourceLanguage, targetLanguage } = message;
+    const currentTabId = this.stateManager.get('currentTabId');
+    
+    // Only handle if this is for the current tab
+    if (tabId === currentTabId) {
+      Logger.info(`Continuous translation restarted successfully: ${sourceLanguage} → ${targetLanguage}`, 'EventManager');
+      
+      // Update state to show translation completed
+      this.stateManager.set('isTranslating', false);
+      
+      // Ensure continuous translation state is maintained
+      this.stateManager.set('continuousTranslation', true);
+    }
+  }
+
+  /**
+   * Handle continuous translation error message
+   * @param {Object} message - Message data
+   * @private
+   */
+  handleContinuousTranslationError(message) {
+    const { tabId, error } = message;
+    const currentTabId = this.stateManager.get('currentTabId');
+    
+    // Only handle if this is for the current tab
+    if (tabId === currentTabId) {
+      Logger.error(`Continuous translation error: ${error}`, null, 'EventManager');
+      
+      // Reset states
+      this.stateManager.set('isTranslating', false);
+      this.stateManager.set('continuousTranslation', false);
+      
+      // Show error message
+      this.uiManager.showErrorMessage(`Failed to restart translation on new page: ${error}`);
+    }
   }
 
   /**

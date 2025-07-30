@@ -1296,9 +1296,11 @@ class TabManager {
   /**
    * Initialize tab manager
    * @param {StateManager} stateManager - State manager instance
+   * @param {MessageRouter} messageRouter - Message router instance
    */
-  constructor(stateManager) {
+  constructor(stateManager, messageRouter) {
     this.stateManager = stateManager;
+    this.messageRouter = messageRouter;
     this.setupTabListeners();
   }
 
@@ -1338,10 +1340,99 @@ class TabManager {
    * @private
    */
   handleTabUpdated(tabId, changeInfo, tab) {
-    // Clear translation state when page starts loading (navigation)
+    // Handle page navigation
     if (changeInfo.status === 'loading' && changeInfo.url) {
-      this.stateManager.clearTranslationState(tabId);
-      Logger.debug(`Tab ${tabId} navigated, state cleared`, null, 'TabManager');
+      const currentState = this.stateManager.getTranslationState(tabId);
+      const wasContinuous = currentState && currentState.continuousTranslation;
+      
+      if (wasContinuous) {
+        // Preserve continuous translation settings during navigation
+        const { sourceLanguage, targetLanguage } = currentState;
+        Logger.info(`Tab ${tabId} navigated with continuous translation enabled`, 'TabManager');
+        
+        // Clear other state but preserve continuous translation
+        this.stateManager.setTranslationState(tabId, {
+          continuousTranslation: true,
+          sourceLanguage,
+          targetLanguage,
+          isTranslating: false,
+          navigationInProgress: true
+        });
+      } else {
+        // Normal navigation - clear all state
+        this.stateManager.clearTranslationState(tabId);
+        Logger.debug(`Tab ${tabId} navigated, state cleared`, null, 'TabManager');
+      }
+    }
+    
+    // When page finishes loading, restart continuous translation if it was enabled
+    if (changeInfo.status === 'complete') {
+      const currentState = this.stateManager.getTranslationState(tabId);
+      if (currentState && currentState.continuousTranslation && currentState.navigationInProgress) {
+        Logger.info(`Page loaded, restarting continuous translation for tab ${tabId}`, 'TabManager');
+        
+        // Remove navigation flag and restart translation
+        this.stateManager.setTranslationState(tabId, {
+          navigationInProgress: false
+        });
+        
+        // Auto-restart continuous translation on new page
+        this.autoRestartContinuousTranslation(tabId, currentState.sourceLanguage, currentState.targetLanguage);
+      }
+    }
+  }
+
+  /**
+   * Automatically restart continuous translation on a new page
+   * @param {number} tabId - Tab ID
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   * @private
+   */
+  async autoRestartContinuousTranslation(tabId, sourceLanguage, targetLanguage) {
+    try {
+      // Small delay to ensure page is fully loaded
+      setTimeout(async () => {
+        try {
+          Logger.info(`Auto-restarting continuous translation: ${sourceLanguage} → ${targetLanguage}`, 'TabManager');
+          
+          // Notify sidepanel that continuous translation is restarting
+          this.messageRouter.forwardToSidepanel({
+            action: 'continuousTranslationRestarting',
+            tabId,
+            sourceLanguage,
+            targetLanguage
+          });
+          
+          // Send message to content script to start translation
+          await chrome.tabs.sendMessage(tabId, {
+            action: 'startContinuousTranslation',
+            sourceLanguage,
+            targetLanguage
+          });
+          
+          // Notify sidepanel that continuous translation restarted successfully
+          this.messageRouter.forwardToSidepanel({
+            action: 'continuousTranslationRestarted',
+            tabId,
+            sourceLanguage,
+            targetLanguage
+          });
+          
+          Logger.info(`Continuous translation auto-restarted for tab ${tabId}`, 'TabManager');
+        } catch (error) {
+          Logger.error('Failed to auto-restart continuous translation', error, 'TabManager');
+          
+          // Notify sidepanel of the error
+          this.messageRouter.forwardToSidepanel({
+            action: 'continuousTranslationError',
+            tabId,
+            error: error.message
+          });
+        }
+      }, 1000); // 1 second delay
+    } catch (error) {
+      Logger.error('Error setting up auto-restart for continuous translation', error, 'TabManager');
     }
   }
 }
@@ -1451,7 +1542,7 @@ class BackgroundApp {
     this.messageRouter = new MessageRouter(this.stateManager, this.cacheManager, this.apiManager);
     
     /** @type {TabManager} Tab manager instance */
-    this.tabManager = new TabManager(this.stateManager);
+    this.tabManager = new TabManager(this.stateManager, this.messageRouter);
     
     /** @type {PerformanceMonitor} Performance monitor instance */
     this.performanceMonitor = new PerformanceMonitor();

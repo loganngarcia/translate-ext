@@ -575,6 +575,24 @@ async function handleStartContinuousTranslation(message, sendResponse) {
     
     console.log(`🔄 Continuous translation started: ${sourceLanguage} → ${targetLanguage}`);
     
+    // Clear any existing state from previous pages
+    isTranslated = false;
+    originalContent.clear();
+    currentTranslation = null;
+    
+    // Stop any existing observer
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    
+    // Check if continuous translation is still enabled (in case it was disabled during navigation)
+    if (!continuousTranslation.enabled) {
+      console.log('🛑 Continuous translation was disabled during startup');
+      sendResponse({ success: false, error: 'Continuous translation disabled' });
+      return;
+    }
+    
     // Perform initial translation of current page
     await handleTranslatePage(message, (response) => {
       // Translation complete, start observing for new elements
