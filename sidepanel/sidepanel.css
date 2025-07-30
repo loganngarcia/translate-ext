@@ -12,18 +12,21 @@ body {
   overflow: hidden;
   width: 100%;
   height: 100vh;
+  /* Force light mode always */
+  background: #FCFCFC;
+  color: rgba(0, 0, 0, 0.95);
 }
 
 .hidden {
   display: none !important;
 }
 
-/* Main container - full width and height */
+/* Main container - full width and height, always light mode */
 .chat-page {
   width: 100%;
   height: 100vh;
   min-height: 100vh;
-  background: #FCFCFC;
+  background: #FCFCFC !important; /* Force light mode */
   overflow: hidden;
   position: relative;
   display: flex;
@@ -50,7 +53,7 @@ body {
   min-height: 0; /* Important for flex overflow */
 }
 
-/* Language selector */
+/* Language selector - match original design exactly */
 .language-selector {
   display: flex;
   justify-content: center;
@@ -73,6 +76,7 @@ body {
   font-size: 16px;
   font-weight: 400;
   line-height: 24px;
+  text-align: center;
 }
 
 .arrow-icon {
@@ -80,6 +84,15 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.arrow-icon svg {
+  width: 18px;
+  height: 15px;
+}
+
+.arrow-icon svg path {
+  stroke: rgba(0, 0, 0, 0.95) !important; /* Force black arrow */
 }
 
 .target-language {
@@ -165,6 +178,7 @@ body {
   flex-shrink: 0;
   display: flex;
   justify-content: center;
+  color: rgba(0, 0, 0, 0.95);
 }
 
 .summary-text {
@@ -213,7 +227,11 @@ body {
   height: 100%;
 }
 
-/* Fixed bottom bar */
+.icon-btn svg path {
+  fill: rgba(0, 0, 0, 0.45) !important; /* Force light mode icon colors */
+}
+
+/* Fixed bottom bar - match original design exactly */
 .fixed-bottom-bar {
   position: absolute;
   bottom: 0;
@@ -221,11 +239,11 @@ body {
   right: 0;
   width: 100%;
   padding: 12px;
-  background: #FCFCFC;
+  background: #FCFCFC !important; /* Force light mode */
   display: flex;
   justify-content: center;
   align-items: center;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-top: none; /* Remove border as per original design */
 }
 
 .translate-btn {
@@ -246,6 +264,7 @@ body {
   font-family: 'Inter', sans-serif;
   font-weight: 600;
   line-height: 24px;
+  padding: 0 12px; /* Match original design */
 }
 
 .translate-btn:hover {
@@ -269,6 +288,10 @@ body {
   flex-shrink: 0;
 }
 
+.translate-btn svg path {
+  fill: rgba(255, 255, 255, 0.95) !important; /* Ensure white icons */
+}
+
 /* Loading states */
 .translate-btn.loading {
   opacity: 0.8;
@@ -279,7 +302,7 @@ body {
   opacity: 0.7;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - light mode only */
 .summary-points::-webkit-scrollbar {
   width: 4px;
 }
@@ -376,37 +399,15 @@ body {
   }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .chat-page {
-    background: #1c1c1e;
-  }
-  
-  .summary-page {
-    color: rgba(255, 255, 255, 0.95);
-  }
-  
-  .source-language,
-  .target-language {
-    background: #2c2c2e;
-  }
-  
-  .ai-overview-title,
-  .summary-text {
-    color: rgba(255, 255, 255, 0.95);
-  }
-  
-  .icon-btn {
-    color: rgba(255, 255, 255, 0.45);
-  }
-  
-  .fixed-bottom-bar {
-    background: #1c1c1e;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  
-  #target-language-select {
-    color: rgba(255, 255, 255, 0.95);
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .translate-btn,
+  .icon-btn,
+  .translate-btn.loading span,
+  .loading-spinner,
+  .icon-btn.success {
+    transition: none;
+    animation: none;
   }
 }
 
