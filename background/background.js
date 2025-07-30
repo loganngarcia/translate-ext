@@ -1,357 +1,1330 @@
-// Background service worker for Chrome extension
-// Handles coordination between sidepanel, content scripts, and AWS API
+/**
+ * @fileoverview Background Service Worker for AI Page Translator Chrome Extension
+ * 
+ * This service worker acts as the central coordinator for the extension. It handles:
+ * - Inter-script communication between sidepanel and content scripts
+ * - AWS API integration for translation and summarization
+ * - Translation state management across tabs
+ * - Caching and performance optimization
+ * - Error handling and retry logic
+ * - Tab lifecycle management
+ * 
+ * Architecture:
+ * - APIManager: Handles all AWS API communications
+ * - StateManager: Manages translation states across tabs
+ * - CacheManager: Handles translation caching and cleanup
+ * - MessageRouter: Routes messages between different extension components
+ * - ErrorHandler: Centralized error handling and reporting
+ * 
+ * @author AI Page Translator Team
+ * @version 1.0.0
+ */
 
-// Configuration
-const AWS_ENDPOINT = 'https://your-api-gateway-url.amazonaws.com/prod';
-const OPENAI_MODEL = 'gpt-4o-mini';
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // milliseconds
+// =============================================================================
+// CONSTANTS AND CONFIGURATION
+// =============================================================================
 
-// State management
-const extensionState = {
-  activeTranslations: new Map(),
-  cachedTranslations: new Map(),
-  rateLimitResets: new Map()
+/**
+ * Configuration constants for the background script
+ * @const {Object}
+ */
+const CONFIG = {
+  // AWS API configuration
+  API: {
+    BASE_URL: 'https://your-api-gateway-url.amazonaws.com/prod',
+    ENDPOINTS: {
+      TRANSLATE: '/translate',
+      SUMMARIZE: '/summarize',
+      DETECT_LANGUAGE: '/detect-language'
+    },
+    TIMEOUT: 30000, // 30 seconds
+    MAX_RETRIES: 3,
+    RETRY_DELAY: 1000 // milliseconds
+  },
+
+  // OpenAI model settings
+  OPENAI: {
+    MODEL: 'gpt-4o-mini',
+    MAX_TOKENS: 4000,
+    TEMPERATURE: 0.3
+  },
+
+  // Cache configuration
+  CACHE: {
+    MAX_ENTRIES: 50,
+    EXPIRY_HOURS: 24,
+    CLEANUP_INTERVAL: 3600000 // 1 hour in milliseconds
+  },
+
+  // Message types for routing
+  MESSAGES: {
+    TRANSLATE_PAGE: 'translatePage',
+    PROCESS_TRANSLATION: 'processTranslation',
+    TRANSLATE_TEXT: 'translateText',
+    UPDATE_SUMMARY: 'updateSummary',
+    TRANSLATION_COMPLETE: 'translationComplete',
+    TRANSLATION_ERROR: 'translationError',
+    PAGE_CONTENT_EXTRACTED: 'pageContentExtracted',
+    CONTENT_SCRIPT_ERROR: 'contentScriptError',
+    TOGGLE_TRANSLATION: 'toggleTranslation',
+    RESTORE_ORIGINAL: 'restoreOriginal'
+  },
+
+  // Error types
+  ERROR_TYPES: {
+    NETWORK: 'network',
+    API: 'api',
+    TIMEOUT: 'timeout',
+    RATE_LIMIT: 'rate_limit',
+    VALIDATION: 'validation',
+    UNKNOWN: 'unknown'
+  },
+
+  // Performance monitoring
+  PERFORMANCE: {
+    ENABLE_TIMING: true,
+    SLOW_OPERATION_THRESHOLD: 5000 // 5 seconds
+  }
 };
 
-// Initialize extension on startup
-chrome.runtime.onStartup.addListener(initializeExtension);
-chrome.runtime.onInstalled.addListener(initializeExtension);
+// =============================================================================
+// LOGGING UTILITY
+// =============================================================================
 
-function initializeExtension() {
-  // Clear any existing state
-  extensionState.activeTranslations.clear();
-  extensionState.cachedTranslations.clear();
-  
-  console.log('AI Page Translator extension initialized');
-  console.log('Sidepanel configured to open on action click via manifest');
-}
+/**
+ * Enhanced logging utility for background script
+ * @namespace
+ */
+const Logger = {
+  /**
+   * Log levels
+   */
+  levels: {
+    ERROR: 0,
+    WARN: 1,
+    INFO: 2,
+    DEBUG: 3
+  },
 
-// Message handling
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  switch (message.action) {
-    case 'translatePage':
-      handleTranslatePage(message, sender, sendResponse);
-      return true; // Keep message channel open for async response
-      
-    case 'processTranslation':
-      handleProcessTranslation(message, sender, sendResponse);
-      return true;
-      
-    case 'translateText':
-      handleTranslateText(message, sender, sendResponse);
-      return true;
-      
-    case 'pageContentExtracted':
-      handlePageContentExtracted(message, sender);
-      break;
-      
-    case 'contentScriptError':
-      handleContentScriptError(message, sender);
-      break;
-      
-    case 'updateSummary':
-      forwardToSidepanel(message);
-      break;
-      
-    default:
-      console.warn('Unknown message action:', message.action);
+  /**
+   * Current log level (can be adjusted for development)
+   */
+  currentLevel: 2, // INFO level
+
+  /**
+   * Log an error message with context
+   * @param {string} message - Error message
+   * @param {Error|Object} [error] - Error object
+   * @param {string} [context] - Context identifier
+   */
+  error(message, error = null, context = '') {
+    if (this.currentLevel >= this.levels.ERROR) {
+      const timestamp = new Date().toISOString();
+      const prefix = `[ERROR ${timestamp}]${context ? ` [${context}]` : ''}`;
+      console.error(prefix, message, error);
+    }
+  },
+
+  /**
+   * Log a warning message
+   * @param {string} message - Warning message
+   * @param {string} [context] - Context identifier
+   */
+  warn(message, context = '') {
+    if (this.currentLevel >= this.levels.WARN) {
+      const timestamp = new Date().toISOString();
+      const prefix = `[WARN ${timestamp}]${context ? ` [${context}]` : ''}`;
+      console.warn(prefix, message);
+    }
+  },
+
+  /**
+   * Log an info message
+   * @param {string} message - Info message
+   * @param {string} [context] - Context identifier
+   */
+  info(message, context = '') {
+    if (this.currentLevel >= this.levels.INFO) {
+      const timestamp = new Date().toISOString();
+      const prefix = `[INFO ${timestamp}]${context ? ` [${context}]` : ''}`;
+      console.info(prefix, message);
+    }
+  },
+
+  /**
+   * Log a debug message
+   * @param {string} message - Debug message
+   * @param {any} [data] - Additional data to log
+   * @param {string} [context] - Context identifier
+   */
+  debug(message, data = null, context = '') {
+    if (this.currentLevel >= this.levels.DEBUG) {
+      const timestamp = new Date().toISOString();
+      const prefix = `[DEBUG ${timestamp}]${context ? ` [${context}]` : ''}`;
+      console.debug(prefix, message, data);
+    }
   }
-});
+};
 
-async function handleTranslatePage(message, sender, sendResponse) {
-  try {
-    const { tabId, sourceLanguage, targetLanguage } = message;
+// =============================================================================
+// STATE MANAGER
+// =============================================================================
+
+/**
+ * Manages translation states across tabs and sessions
+ * @class
+ */
+class StateManager {
+  /**
+   * Initialize the state manager
+   */
+  constructor() {
+    /** @type {Map<number, Object>} Active translation states by tab ID */
+    this.activeTranslations = new Map();
     
-    // Check if translation is already in progress
-    if (extensionState.activeTranslations.has(tabId)) {
-      sendResponse({ success: false, error: 'Translation already in progress' });
-      return;
-    }
+    /** @type {Map<string, number>} Rate limit reset times by endpoint */
+    this.rateLimitResets = new Map();
     
-    extensionState.activeTranslations.set(tabId, {
-      sourceLanguage,
-      targetLanguage,
-      startTime: Date.now()
-    });
-    
-    // Send message to content script to start translation
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, {
-        action: 'translatePage',
-        sourceLanguage,
-        targetLanguage
-      });
-      
-      sendResponse(response);
-    } catch (error) {
-      extensionState.activeTranslations.delete(tabId);
-      throw error;
-    }
-    
-  } catch (error) {
-    console.error('Translation page error:', error);
-    sendResponse({ success: false, error: error.message });
+    /** @type {Set<number>} Tabs with active content scripts */
+    this.activeTabs = new Set();
   }
-}
 
-async function handleProcessTranslation(message, sender, sendResponse) {
-  try {
-    const { content, sourceLanguage, targetLanguage, pageUrl } = message;
+  /**
+   * Get translation state for a specific tab
+   * @param {number} tabId - Tab ID
+   * @returns {Object|null} Translation state or null
+   */
+  getTranslationState(tabId) {
+    return this.activeTranslations.get(tabId) || null;
+  }
+
+  /**
+   * Set translation state for a tab
+   * @param {number} tabId - Tab ID
+   * @param {Object} state - Translation state object
+   */
+  setTranslationState(tabId, state) {
+    const existingState = this.activeTranslations.get(tabId) || {};
+    const newState = {
+      ...existingState,
+      ...state,
+      lastUpdated: Date.now()
+    };
     
-    // Generate cache key
-    const cacheKey = `${sourceLanguage}-${targetLanguage}-${hashString(content)}`;
+    this.activeTranslations.set(tabId, newState);
+    Logger.debug(`Translation state updated for tab ${tabId}`, newState, 'StateManager');
+  }
+
+  /**
+   * Check if translation is in progress for a tab
+   * @param {number} tabId - Tab ID
+   * @returns {boolean} True if translation is in progress
+   */
+  isTranslationInProgress(tabId) {
+    const state = this.activeTranslations.get(tabId);
+    return state && state.isTranslating === true;
+  }
+
+  /**
+   * Clear translation state for a tab
+   * @param {number} tabId - Tab ID
+   */
+  clearTranslationState(tabId) {
+    this.activeTranslations.delete(tabId);
+    this.activeTabs.delete(tabId);
+    Logger.debug(`Translation state cleared for tab ${tabId}`, null, 'StateManager');
+  }
+
+  /**
+   * Set rate limit reset time for an endpoint
+   * @param {string} endpoint - API endpoint
+   * @param {number} resetTime - Reset time as Unix timestamp
+   */
+  setRateLimitReset(endpoint, resetTime) {
+    this.rateLimitResets.set(endpoint, resetTime);
+    Logger.warn(`Rate limit set for ${endpoint}, resets at ${new Date(resetTime * 1000)}`, 'StateManager');
+  }
+
+  /**
+   * Check if an endpoint is currently rate limited
+   * @param {string} endpoint - API endpoint
+   * @returns {boolean} True if rate limited
+   */
+  isRateLimited(endpoint) {
+    const resetTime = this.rateLimitResets.get(endpoint);
+    if (!resetTime) return false;
     
-    // Check cache first
-    if (extensionState.cachedTranslations.has(cacheKey)) {
-      const cached = extensionState.cachedTranslations.get(cacheKey);
-      sendResponse({ success: true, ...cached });
-      return;
+    const isLimited = Date.now() < (resetTime * 1000);
+    if (!isLimited) {
+      // Clean up expired rate limit
+      this.rateLimitResets.delete(endpoint);
     }
     
-    // Make parallel API calls for translation and summary
-    const [translationResult, summaryResult] = await Promise.allSettled([
-      translateContent(content, sourceLanguage, targetLanguage),
-      generateSummary(content, targetLanguage, pageUrl)
-    ]);
-    
-    const response = { success: true };
-    
-    if (translationResult.status === 'fulfilled') {
-      response.translations = translationResult.value;
-    } else {
-      console.error('Translation failed:', translationResult.reason);
-    }
-    
-    if (summaryResult.status === 'fulfilled') {
-      response.summary = summaryResult.value;
-    } else {
-      console.error('Summary generation failed:', summaryResult.reason);
-    }
-    
-    // Cache successful results
-    if (response.translations || response.summary) {
-      extensionState.cachedTranslations.set(cacheKey, {
-        translations: response.translations,
-        summary: response.summary,
-        timestamp: Date.now()
-      });
-      
-      // Clean old cache entries (keep last 50)
-      if (extensionState.cachedTranslations.size > 50) {
-        const entries = Array.from(extensionState.cachedTranslations.entries());
-        entries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-        extensionState.cachedTranslations.clear();
-        entries.slice(0, 50).forEach(([key, value]) => {
-          extensionState.cachedTranslations.set(key, value);
-        });
+    return isLimited;
+  }
+
+  /**
+   * Mark a tab as having an active content script
+   * @param {number} tabId - Tab ID
+   */
+  markTabActive(tabId) {
+    this.activeTabs.add(tabId);
+  }
+
+  /**
+   * Check if a tab has an active content script
+   * @param {number} tabId - Tab ID
+   * @returns {boolean} True if tab is active
+   */
+  isTabActive(tabId) {
+    return this.activeTabs.has(tabId);
+  }
+
+  /**
+   * Get statistics about current state
+   * @returns {Object} State statistics
+   */
+  getStatistics() {
+    return {
+      activeTranslations: this.activeTranslations.size,
+      rateLimitedEndpoints: this.rateLimitResets.size,
+      activeTabs: this.activeTabs.size,
+      oldestTranslation: this.getOldestTranslationAge()
+    };
+  }
+
+  /**
+   * Get age of oldest active translation in milliseconds
+   * @returns {number} Age in milliseconds or 0 if none
+   * @private
+   */
+  getOldestTranslationAge() {
+    let oldestTime = Date.now();
+    for (const state of this.activeTranslations.values()) {
+      if (state.startTime && state.startTime < oldestTime) {
+        oldestTime = state.startTime;
       }
     }
-    
-    sendResponse(response);
-    
-  } catch (error) {
-    console.error('Process translation error:', error);
-    sendResponse({ success: false, error: error.message });
+    return this.activeTranslations.size > 0 ? Date.now() - oldestTime : 0;
+  }
+
+  /**
+   * Clean up old or stale states
+   */
+  cleanup() {
+    const now = Date.now();
+    const maxAge = 30 * 60 * 1000; // 30 minutes
+
+    // Clean up old translation states
+    for (const [tabId, state] of this.activeTranslations.entries()) {
+      if (state.lastUpdated && (now - state.lastUpdated) > maxAge) {
+        this.clearTranslationState(tabId);
+        Logger.debug(`Cleaned up stale translation state for tab ${tabId}`, null, 'StateManager');
+      }
+    }
+
+    // Clean up expired rate limits
+    for (const [endpoint, resetTime] of this.rateLimitResets.entries()) {
+      if (now >= (resetTime * 1000)) {
+        this.rateLimitResets.delete(endpoint);
+        Logger.debug(`Cleaned up expired rate limit for ${endpoint}`, null, 'StateManager');
+      }
+    }
+  }
+
+  /**
+   * Reset all state (useful for testing or emergency reset)
+   */
+  reset() {
+    this.activeTranslations.clear();
+    this.rateLimitResets.clear();
+    this.activeTabs.clear();
+    Logger.info('State manager reset', 'StateManager');
   }
 }
 
-async function handleTranslateText(message, sender, sendResponse) {
-  try {
-    const { text, sourceLanguage, targetLanguage } = message;
+// =============================================================================
+// CACHE MANAGER
+// =============================================================================
+
+/**
+ * Manages translation caching for performance optimization
+ * @class
+ */
+class CacheManager {
+  /**
+   * Initialize the cache manager
+   */
+  constructor() {
+    /** @type {Map<string, Object>} Translation cache */
+    this.cache = new Map();
     
-    const translations = await translateContent(text, sourceLanguage, targetLanguage);
-    const translatedText = translations[text] || text;
+    /** @type {number|null} Cleanup interval ID */
+    this.cleanupInterval = null;
     
-    sendResponse({ success: true, translatedText });
+    this.startCleanupInterval();
+  }
+
+  /**
+   * Generate cache key from translation parameters
+   * @param {string} content - Content to translate
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   * @returns {string} Cache key
+   * @private
+   */
+  generateCacheKey(content, sourceLanguage, targetLanguage) {
+    // Create a simple hash of the content for the key
+    const contentHash = this.simpleHash(content);
+    return `${sourceLanguage}-${targetLanguage}-${contentHash}`;
+  }
+
+  /**
+   * Simple hash function for content
+   * @param {string} str - String to hash
+   * @returns {string} Hash value
+   * @private
+   */
+  simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Get cached translation result
+   * @param {string} content - Content that was translated
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   * @returns {Object|null} Cached result or null
+   */
+  get(content, sourceLanguage, targetLanguage) {
+    const key = this.generateCacheKey(content, sourceLanguage, targetLanguage);
+    const cached = this.cache.get(key);
     
-  } catch (error) {
-    console.error('Translate text error:', error);
-    sendResponse({ success: false, error: error.message });
+    if (!cached) {
+      return null;
+    }
+
+    // Check if cache entry has expired
+    const age = Date.now() - cached.timestamp;
+    const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
+    
+    if (age > maxAge) {
+      this.cache.delete(key);
+      Logger.debug(`Cache entry expired and removed: ${key}`, null, 'CacheManager');
+      return null;
+    }
+
+    Logger.debug(`Cache hit for key: ${key}`, null, 'CacheManager');
+    return cached.data;
+  }
+
+  /**
+   * Store translation result in cache
+   * @param {string} content - Content that was translated
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   * @param {Object} result - Translation result to cache
+   */
+  set(content, sourceLanguage, targetLanguage, result) {
+    const key = this.generateCacheKey(content, sourceLanguage, targetLanguage);
+    
+    // Ensure we don't exceed cache size limit
+    if (this.cache.size >= CONFIG.CACHE.MAX_ENTRIES) {
+      this.evictOldestEntries();
+    }
+
+    const cacheEntry = {
+      data: result,
+      timestamp: Date.now(),
+      accessCount: 1
+    };
+
+    this.cache.set(key, cacheEntry);
+    Logger.debug(`Translation cached with key: ${key}`, null, 'CacheManager');
+  }
+
+  /**
+   * Evict oldest cache entries to make room for new ones
+   * @private
+   */
+  evictOldestEntries() {
+    const entries = Array.from(this.cache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    
+    // Remove oldest 20% of entries
+    const toRemove = Math.floor(CONFIG.CACHE.MAX_ENTRIES * 0.2);
+    for (let i = 0; i < toRemove && entries.length > 0; i++) {
+      const [key] = entries[i];
+      this.cache.delete(key);
+    }
+    
+    Logger.debug(`Evicted ${toRemove} old cache entries`, null, 'CacheManager');
+  }
+
+  /**
+   * Start automatic cache cleanup interval
+   * @private
+   */
+  startCleanupInterval() {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, CONFIG.CACHE.CLEANUP_INTERVAL);
+    
+    Logger.debug('Cache cleanup interval started', null, 'CacheManager');
+  }
+
+  /**
+   * Clean up expired cache entries
+   */
+  cleanup() {
+    const now = Date.now();
+    const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
+    let removedCount = 0;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > maxAge) {
+        this.cache.delete(key);
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      Logger.debug(`Cleaned up ${removedCount} expired cache entries`, null, 'CacheManager');
+    }
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Cache statistics
+   */
+  getStatistics() {
+    const entries = Array.from(this.cache.values());
+    const totalSize = entries.length;
+    const averageAge = totalSize > 0 
+      ? entries.reduce((sum, entry) => sum + (Date.now() - entry.timestamp), 0) / totalSize
+      : 0;
+
+    return {
+      totalEntries: totalSize,
+      maxEntries: CONFIG.CACHE.MAX_ENTRIES,
+      utilizationPercent: Math.round((totalSize / CONFIG.CACHE.MAX_ENTRIES) * 100),
+      averageAgeMs: Math.round(averageAge)
+    };
+  }
+
+  /**
+   * Clear all cache entries
+   */
+  clear() {
+    this.cache.clear();
+    Logger.info('Translation cache cleared', 'CacheManager');
+  }
+
+  /**
+   * Stop cleanup interval and clear cache
+   */
+  shutdown() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.clear();
+    Logger.info('Cache manager shutdown', 'CacheManager');
   }
 }
 
-async function translateContent(content, sourceLanguage, targetLanguage) {
-  const response = await callAWSAPI('/translate', {
-    action: 'translate',
-    content,
-    sourceLanguage,
-    targetLanguage,
-    model: OPENAI_MODEL
-  });
-  
-  return response.translations || {};
-}
+// =============================================================================
+// API MANAGER
+// =============================================================================
 
-async function generateSummary(content, targetLanguage, pageUrl) {
-  const response = await callAWSAPI('/summarize', {
-    action: 'summarize',
-    content,
-    targetLanguage,
-    pageUrl,
-    model: OPENAI_MODEL
-  });
-  
-  return response.summary || {
-    title: 'Summary not available',
-    points: [
-      { emoji: '📄', text: 'Unable to generate summary at this time.' }
-    ]
-  };
-}
+/**
+ * Manages all AWS API communications with retry logic and error handling
+ * @class
+ */
+class APIManager {
+  /**
+   * Initialize the API manager
+   * @param {StateManager} stateManager - State manager instance
+   */
+  constructor(stateManager) {
+    this.stateManager = stateManager;
+  }
 
-async function callAWSAPI(endpoint, data) {
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  /**
+   * Make an API call with retry logic and error handling
+   * @param {string} endpoint - API endpoint (e.g., '/translate')
+   * @param {Object} data - Request data
+   * @returns {Promise<Object>} API response
+   */
+  async makeAPICall(endpoint, data) {
+    const fullUrl = CONFIG.API.BASE_URL + endpoint;
+    
+    // Check for rate limiting
+    if (this.stateManager.isRateLimited(endpoint)) {
+      throw new Error(`API endpoint ${endpoint} is rate limited`);
+    }
+
+    Logger.debug(`Making API call to ${endpoint}`, data, 'APIManager');
+
+    for (let attempt = 1; attempt <= CONFIG.API.MAX_RETRIES; attempt++) {
+      try {
+        const response = await this.makeRequest(fullUrl, data, attempt);
+        Logger.debug(`API call successful after ${attempt} attempt(s)`, null, 'APIManager');
+        return response;
+      } catch (error) {
+        Logger.warn(`API call attempt ${attempt}/${CONFIG.API.MAX_RETRIES} failed: ${error.message}`, 'APIManager');
+        
+        // Handle rate limiting
+        if (error.status === 429) {
+          const resetTime = this.extractRateLimitReset(error.headers);
+          if (resetTime) {
+            this.stateManager.setRateLimitReset(endpoint, resetTime);
+          }
+        }
+
+        // If this is the last attempt, throw the error
+        if (attempt === CONFIG.API.MAX_RETRIES) {
+          throw this.createAPIError(error, endpoint, attempt);
+        }
+
+        // Wait before retrying (exponential backoff)
+        const delay = CONFIG.API.RETRY_DELAY * Math.pow(2, attempt - 1);
+        await this.sleep(delay);
+      }
+    }
+  }
+
+  /**
+   * Make a single HTTP request
+   * @param {string} url - Request URL
+   * @param {Object} data - Request data
+   * @param {number} attempt - Attempt number (for logging)
+   * @returns {Promise<Object>} Response data
+   * @private
+   */
+  async makeRequest(url, data, attempt) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.API.TIMEOUT);
+
     try {
-      const response = await fetch(`${AWS_ENDPOINT}${endpoint}`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        signal: controller.signal
       });
-      
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        if (response.status === 429) {
-          // Rate limited - wait and retry
-          const resetTime = response.headers.get('X-RateLimit-Reset');
-          if (resetTime) {
-            extensionState.rateLimitResets.set(endpoint, parseInt(resetTime));
-          }
-          
-          if (attempt < MAX_RETRIES) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
-            continue;
-          }
-        }
-        
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        const error = new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        error.status = response.status;
+        error.headers = response.headers;
+        throw error;
       }
-      
+
       const result = await response.json();
       
-      // Handle successful response
       if (result.success === false) {
         throw new Error(result.error || 'API request failed');
       }
-      
+
       return result;
-      
     } catch (error) {
-      console.error(`AWS API call attempt ${attempt} failed:`, error);
+      clearTimeout(timeoutId);
       
-      if (attempt === MAX_RETRIES) {
-        throw error;
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
       }
       
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
-    }
-  }
-}
-
-function handlePageContentExtracted(message, sender) {
-  // Forward content to sidepanel if it's open
-  forwardToSidepanel(message);
-  
-  // Store content for potential translation
-  if (sender.tab?.id) {
-    extensionState.activeTranslations.set(sender.tab.id, {
-      ...extensionState.activeTranslations.get(sender.tab.id),
-      content: message.content
-    });
-  }
-}
-
-function handleContentScriptError(message, sender) {
-  console.error('Content script error:', message);
-  
-  // Notify sidepanel of error
-  forwardToSidepanel({
-    action: 'translationError',
-    error: message.error,
-    context: message.context
-  });
-}
-
-async function forwardToSidepanel(message) {
-  try {
-    // Try to send message to sidepanel through runtime messaging
-    await chrome.runtime.sendMessage(message);
-  } catch (error) {
-    // Sidepanel might not be open, which is fine
-    console.debug('Could not forward to sidepanel:', error.message);
-  }
-}
-
-// Tab management
-chrome.tabs.onRemoved.addListener((tabId) => {
-  extensionState.activeTranslations.delete(tabId);
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === 'loading') {
-    // Clear translation state when page starts loading
-    extensionState.activeTranslations.delete(tabId);
-  }
-});
-
-// Extension lifecycle
-chrome.runtime.onSuspend.addListener(() => {
-  // Clean up before suspension
-  extensionState.activeTranslations.clear();
-  console.log('Extension suspended');
-});
-
-// Utility functions
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash).toString(36);
-}
-
-function isRateLimited(endpoint) {
-  const resetTime = extensionState.rateLimitResets.get(endpoint);
-  if (!resetTime) return false;
-  
-  return Date.now() < resetTime * 1000;
-}
-
-// Error reporting
-function reportError(error, context) {
-  console.error(`Background script error in ${context}:`, error);
-  
-  // Could send to analytics service
-  // analytics.reportError(error, context);
-}
-
-// Performance monitoring
-function measurePerformance(operation, func) {
-  return async (...args) => {
-    const start = performance.now();
-    try {
-      const result = await func(...args);
-      const duration = performance.now() - start;
-      console.debug(`${operation} completed in ${duration.toFixed(2)}ms`);
-      return result;
-    } catch (error) {
-      const duration = performance.now() - start;
-      console.error(`${operation} failed after ${duration.toFixed(2)}ms:`, error);
       throw error;
     }
-  };
+  }
+
+  /**
+   * Extract rate limit reset time from response headers
+   * @param {Headers} headers - Response headers
+   * @returns {number|null} Reset time as Unix timestamp or null
+   * @private
+   */
+  extractRateLimitReset(headers) {
+    const resetHeader = headers?.get('X-RateLimit-Reset');
+    return resetHeader ? parseInt(resetHeader, 10) : null;
+  }
+
+  /**
+   * Create a standardized API error object
+   * @param {Error} originalError - Original error
+   * @param {string} endpoint - API endpoint
+   * @param {number} attempts - Number of attempts made
+   * @returns {Error} Standardized error
+   * @private
+   */
+  createAPIError(originalError, endpoint, attempts) {
+    const error = new Error(`API call to ${endpoint} failed after ${attempts} attempts: ${originalError.message}`);
+    error.originalError = originalError;
+    error.endpoint = endpoint;
+    error.attempts = attempts;
+    error.type = CONFIG.ERROR_TYPES.API;
+    
+    if (originalError.message.includes('timeout')) {
+      error.type = CONFIG.ERROR_TYPES.TIMEOUT;
+    } else if (originalError.message.includes('network') || originalError.message.includes('fetch')) {
+      error.type = CONFIG.ERROR_TYPES.NETWORK;
+    } else if (originalError.status === 429) {
+      error.type = CONFIG.ERROR_TYPES.RATE_LIMIT;
+    }
+    
+    return error;
+  }
+
+  /**
+   * Sleep for a specified number of milliseconds
+   * @param {number} ms - Milliseconds to sleep
+   * @returns {Promise} Promise that resolves after the delay
+   * @private
+   */
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Translate content using the translation API
+   * @param {string} content - Content to translate
+   * @param {string} sourceLanguage - Source language
+   * @param {string} targetLanguage - Target language
+   * @returns {Promise<Object>} Translation result
+   */
+  async translateContent(content, sourceLanguage, targetLanguage) {
+    const requestData = {
+      action: 'translate',
+      content,
+      sourceLanguage,
+      targetLanguage,
+      model: CONFIG.OPENAI.MODEL
+    };
+
+    const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.TRANSLATE, requestData);
+    return response.translations || {};
+  }
+
+  /**
+   * Generate summary using the summarization API
+   * @param {string} content - Content to summarize
+   * @param {string} targetLanguage - Target language for summary
+   * @param {string} pageUrl - URL of the page being summarized
+   * @returns {Promise<Object>} Summary result
+   */
+  async generateSummary(content, targetLanguage, pageUrl) {
+    const requestData = {
+      action: 'summarize',
+      content,
+      targetLanguage,
+      pageUrl,
+      model: CONFIG.OPENAI.MODEL
+    };
+
+    const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.SUMMARIZE, requestData);
+    return response.summary || {
+      title: 'Summary not available',
+      points: [
+        { emoji: '📄', text: 'Unable to generate summary at this time.' }
+      ]
+    };
+  }
+
+  /**
+   * Detect language of content
+   * @param {string} content - Content to analyze
+   * @returns {Promise<string>} Detected language
+   */
+  async detectLanguage(content) {
+    const requestData = {
+      action: 'detect-language',
+      content: content.substring(0, 1000) // Limit content for detection
+    };
+
+    try {
+      const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.DETECT_LANGUAGE, requestData);
+      return response.detectedLanguage || 'Unknown';
+    } catch (error) {
+      Logger.error('Language detection failed', error, 'APIManager');
+      return 'Unknown';
+    }
+  }
 }
 
-// Development helpers
-if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development') {
-  // Add development-specific debugging
-  chrome.runtime.onMessage.addListener((message) => {
-    console.debug('Background received message:', message);
-  });
+// =============================================================================
+// MESSAGE ROUTER
+// =============================================================================
+
+/**
+ * Routes messages between different extension components
+ * @class
+ */
+class MessageRouter {
+  /**
+   * Initialize the message router
+   * @param {StateManager} stateManager - State manager instance
+   * @param {CacheManager} cacheManager - Cache manager instance
+   * @param {APIManager} apiManager - API manager instance
+   */
+  constructor(stateManager, cacheManager, apiManager) {
+    this.stateManager = stateManager;
+    this.cacheManager = cacheManager;
+    this.apiManager = apiManager;
+    
+    this.setupMessageListener();
+  }
+
+  /**
+   * Set up the main message listener
+   * @private
+   */
+  setupMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      this.routeMessage(message, sender, sendResponse);
+      return true; // Keep message channel open for async response
+    });
+
+    Logger.info('Message router initialized', 'MessageRouter');
+  }
+
+  /**
+   * Route incoming messages to appropriate handlers
+   * @param {Object} message - Incoming message
+   * @param {Object} sender - Message sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async routeMessage(message, sender, sendResponse) {
+    try {
+      Logger.debug(`Routing message: ${message.action}`, message, 'MessageRouter');
+
+      switch (message.action) {
+        case CONFIG.MESSAGES.TRANSLATE_PAGE:
+          await this.handleTranslatePage(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.PROCESS_TRANSLATION:
+          await this.handleProcessTranslation(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.TRANSLATE_TEXT:
+          await this.handleTranslateText(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.PAGE_CONTENT_EXTRACTED:
+          this.handlePageContentExtracted(message, sender);
+          break;
+
+        case CONFIG.MESSAGES.CONTENT_SCRIPT_ERROR:
+          this.handleContentScriptError(message, sender);
+          break;
+
+        case CONFIG.MESSAGES.UPDATE_SUMMARY:
+          this.forwardToSidepanel(message);
+          break;
+
+        default:
+          Logger.warn(`Unknown message action: ${message.action}`, 'MessageRouter');
+          sendResponse({ success: false, error: 'Unknown action' });
+      }
+    } catch (error) {
+      Logger.error('Error routing message', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle translate page request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleTranslatePage(message, sender, sendResponse) {
+    const { tabId, sourceLanguage, targetLanguage } = message;
+
+    try {
+      // Validate request
+      if (!tabId || !targetLanguage) {
+        throw new Error('Missing required parameters: tabId and targetLanguage');
+      }
+
+      // Check if translation is already in progress
+      if (this.stateManager.isTranslationInProgress(tabId)) {
+        sendResponse({ success: false, error: 'Translation already in progress' });
+        return;
+      }
+
+      // Set translation state
+      this.stateManager.setTranslationState(tabId, {
+        sourceLanguage,
+        targetLanguage,
+        isTranslating: true,
+        startTime: Date.now()
+      });
+
+      // Send message to content script
+      const response = await this.sendToContentScript(tabId, {
+        action: CONFIG.MESSAGES.TRANSLATE_PAGE,
+        sourceLanguage,
+        targetLanguage
+      });
+
+      sendResponse(response);
+    } catch (error) {
+      this.stateManager.setTranslationState(tabId, { isTranslating: false });
+      Logger.error('Failed to handle translate page request', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle process translation request (content + summary generation)
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleProcessTranslation(message, sender, sendResponse) {
+    const { content, sourceLanguage, targetLanguage, pageUrl } = message;
+
+    try {
+      // Validate input
+      if (!content || !targetLanguage) {
+        throw new Error('Missing required parameters: content and targetLanguage');
+      }
+
+      // Check cache first
+      const cacheKey = `${sourceLanguage}-${targetLanguage}`;
+      const cached = this.cacheManager.get(content, sourceLanguage, targetLanguage);
+      
+      if (cached) {
+        Logger.info('Serving translation from cache', 'MessageRouter');
+        sendResponse({ success: true, ...cached });
+        return;
+      }
+
+      // Make parallel API calls for translation and summary
+      const [translationResult, summaryResult] = await Promise.allSettled([
+        this.apiManager.translateContent(content, sourceLanguage, targetLanguage),
+        this.apiManager.generateSummary(content, targetLanguage, pageUrl)
+      ]);
+
+      const response = { success: true };
+
+      // Process translation result
+      if (translationResult.status === 'fulfilled') {
+        response.translations = translationResult.value;
+      } else {
+        Logger.error('Translation failed', translationResult.reason, 'MessageRouter');
+      }
+
+      // Process summary result
+      if (summaryResult.status === 'fulfilled') {
+        response.summary = summaryResult.value;
+      } else {
+        Logger.error('Summary generation failed', summaryResult.reason, 'MessageRouter');
+      }
+
+      // Cache the results if we have any
+      if (response.translations || response.summary) {
+        this.cacheManager.set(content, sourceLanguage, targetLanguage, {
+          translations: response.translations,
+          summary: response.summary
+        });
+      }
+
+      sendResponse(response);
+    } catch (error) {
+      Logger.error('Failed to process translation', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle single text translation request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleTranslateText(message, sender, sendResponse) {
+    const { text, sourceLanguage, targetLanguage } = message;
+
+    try {
+      if (!text || !targetLanguage) {
+        throw new Error('Missing required parameters: text and targetLanguage');
+      }
+
+      const translations = await this.apiManager.translateContent(text, sourceLanguage, targetLanguage);
+      const translatedText = translations[text] || text;
+
+      sendResponse({ success: true, translatedText });
+    } catch (error) {
+      Logger.error('Failed to translate text', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Handle page content extracted notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handlePageContentExtracted(message, sender) {
+    if (sender.tab?.id) {
+      this.stateManager.markTabActive(sender.tab.id);
+      this.stateManager.setTranslationState(sender.tab.id, {
+        content: message.content
+      });
+    }
+
+    // Forward to sidepanel if needed
+    this.forwardToSidepanel(message);
+  }
+
+  /**
+   * Handle content script error notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handleContentScriptError(message, sender) {
+    Logger.error('Content script error', message, 'MessageRouter');
+
+    // Clear any ongoing translation state
+    if (sender.tab?.id) {
+      this.stateManager.setTranslationState(sender.tab.id, { isTranslating: false });
+    }
+
+    // Forward error to sidepanel
+    this.forwardToSidepanel({
+      action: CONFIG.MESSAGES.TRANSLATION_ERROR,
+      error: message.error,
+      context: message.context
+    });
+  }
+
+  /**
+   * Send message to content script
+   * @param {number} tabId - Tab ID
+   * @param {Object} message - Message to send
+   * @returns {Promise<Object>} Response from content script
+   * @private
+   */
+  async sendToContentScript(tabId, message) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Content script communication timeout'));
+      }, 10000);
+
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        clearTimeout(timeout);
+
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response || { success: true });
+        }
+      });
+    });
+  }
+
+  /**
+   * Forward message to sidepanel
+   * @param {Object} message - Message to forward
+   * @private
+   */
+  async forwardToSidepanel(message) {
+    try {
+      await chrome.runtime.sendMessage(message);
+      Logger.debug('Message forwarded to sidepanel', message, 'MessageRouter');
+    } catch (error) {
+      // Sidepanel might not be open, which is fine
+      Logger.debug('Could not forward to sidepanel (might not be open)', null, 'MessageRouter');
+    }
+  }
+}
+
+// =============================================================================
+// TAB MANAGER
+// =============================================================================
+
+/**
+ * Manages tab lifecycle events and cleanup
+ * @class
+ */
+class TabManager {
+  /**
+   * Initialize tab manager
+   * @param {StateManager} stateManager - State manager instance
+   */
+  constructor(stateManager) {
+    this.stateManager = stateManager;
+    this.setupTabListeners();
+  }
+
+  /**
+   * Set up tab event listeners
+   * @private
+   */
+  setupTabListeners() {
+    // Handle tab removal
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      this.handleTabRemoved(tabId);
+    });
+
+    // Handle tab updates (navigation, reload, etc.)
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      this.handleTabUpdated(tabId, changeInfo, tab);
+    });
+
+    Logger.info('Tab manager initialized', 'TabManager');
+  }
+
+  /**
+   * Handle tab removal
+   * @param {number} tabId - ID of removed tab
+   * @private
+   */
+  handleTabRemoved(tabId) {
+    this.stateManager.clearTranslationState(tabId);
+    Logger.debug(`Tab ${tabId} removed, state cleared`, null, 'TabManager');
+  }
+
+  /**
+   * Handle tab updates
+   * @param {number} tabId - Tab ID
+   * @param {Object} changeInfo - Change information
+   * @param {Object} tab - Tab object
+   * @private
+   */
+  handleTabUpdated(tabId, changeInfo, tab) {
+    // Clear translation state when page starts loading (navigation)
+    if (changeInfo.status === 'loading' && changeInfo.url) {
+      this.stateManager.clearTranslationState(tabId);
+      Logger.debug(`Tab ${tabId} navigated, state cleared`, null, 'TabManager');
+    }
+  }
+}
+
+// =============================================================================
+// PERFORMANCE MONITOR
+// =============================================================================
+
+/**
+ * Monitors performance and logs slow operations
+ * @class
+ */
+class PerformanceMonitor {
+  /**
+   * Initialize performance monitor
+   */
+  constructor() {
+    /** @type {Map<string, number>} Operation start times */
+    this.operations = new Map();
+  }
+
+  /**
+   * Start timing an operation
+   * @param {string} operationId - Unique operation identifier
+   * @param {string} description - Operation description
+   */
+  startOperation(operationId, description) {
+    if (!CONFIG.PERFORMANCE.ENABLE_TIMING) return;
+
+    this.operations.set(operationId, {
+      startTime: performance.now(),
+      description
+    });
+
+    Logger.debug(`Performance tracking started: ${description}`, null, 'PerformanceMonitor');
+  }
+
+  /**
+   * End timing an operation and log if slow
+   * @param {string} operationId - Operation identifier
+   */
+  endOperation(operationId) {
+    if (!CONFIG.PERFORMANCE.ENABLE_TIMING) return;
+
+    const operation = this.operations.get(operationId);
+    if (!operation) {
+      Logger.warn(`Unknown operation ID: ${operationId}`, 'PerformanceMonitor');
+      return;
+    }
+
+    const duration = performance.now() - operation.startTime;
+    this.operations.delete(operationId);
+
+    if (duration > CONFIG.PERFORMANCE.SLOW_OPERATION_THRESHOLD) {
+      Logger.warn(`Slow operation detected: ${operation.description} took ${duration.toFixed(2)}ms`, 'PerformanceMonitor');
+    } else {
+      Logger.debug(`Operation completed: ${operation.description} - ${duration.toFixed(2)}ms`, null, 'PerformanceMonitor');
+    }
+  }
+
+  /**
+   * Wrap an async function with performance monitoring
+   * @param {string} description - Operation description
+   * @param {Function} asyncFunction - Function to monitor
+   * @returns {Function} Wrapped function
+   */
+  wrapAsync(description, asyncFunction) {
+    return async (...args) => {
+      const operationId = `${description}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      this.startOperation(operationId, description);
+      try {
+        const result = await asyncFunction(...args);
+        this.endOperation(operationId);
+        return result;
+      } catch (error) {
+        this.endOperation(operationId);
+        throw error;
+      }
+    };
+  }
+}
+
+// =============================================================================
+// MAIN APPLICATION
+// =============================================================================
+
+/**
+ * Main background application controller
+ * @class
+ */
+class BackgroundApp {
+  /**
+   * Initialize the background application
+   */
+  constructor() {
+    /** @type {StateManager} State manager instance */
+    this.stateManager = new StateManager();
+    
+    /** @type {CacheManager} Cache manager instance */
+    this.cacheManager = new CacheManager();
+    
+    /** @type {APIManager} API manager instance */
+    this.apiManager = new APIManager(this.stateManager);
+    
+    /** @type {MessageRouter} Message router instance */
+    this.messageRouter = new MessageRouter(this.stateManager, this.cacheManager, this.apiManager);
+    
+    /** @type {TabManager} Tab manager instance */
+    this.tabManager = new TabManager(this.stateManager);
+    
+    /** @type {PerformanceMonitor} Performance monitor instance */
+    this.performanceMonitor = new PerformanceMonitor();
+
+    this.initialize();
+  }
+
+  /**
+   * Initialize the background application
+   * @private
+   */
+  initialize() {
+    Logger.info('AI Page Translator background service worker initialized', 'BackgroundApp');
+    Logger.info('Extension configuration loaded successfully', 'BackgroundApp');
+
+    // Log initial statistics
+    this.logStatistics();
+    
+    // Set up periodic cleanup
+    this.setupPeriodicCleanup();
+  }
+
+  /**
+   * Log current statistics
+   * @private
+   */
+  logStatistics() {
+    const stateStats = this.stateManager.getStatistics();
+    const cacheStats = this.cacheManager.getStatistics();
+    
+    Logger.info('Current statistics', 'BackgroundApp');
+    Logger.debug('State statistics', stateStats, 'BackgroundApp');
+    Logger.debug('Cache statistics', cacheStats, 'BackgroundApp');
+  }
+
+  /**
+   * Set up periodic cleanup tasks
+   * @private
+   */
+  setupPeriodicCleanup() {
+    // Run cleanup every hour
+    setInterval(() => {
+      this.stateManager.cleanup();
+      this.logStatistics();
+    }, 60 * 60 * 1000);
+
+    Logger.debug('Periodic cleanup scheduled', null, 'BackgroundApp');
+  }
+
+  /**
+   * Shutdown the background application
+   */
+  shutdown() {
+    try {
+      this.cacheManager.shutdown();
+      this.stateManager.reset();
+      Logger.info('Background application shutdown completed', 'BackgroundApp');
+    } catch (error) {
+      Logger.error('Error during background application shutdown', error, 'BackgroundApp');
+    }
+  }
+}
+
+// =============================================================================
+// APPLICATION INITIALIZATION
+// =============================================================================
+
+/**
+ * Global background application instance
+ * @type {BackgroundApp}
+ */
+let backgroundApp;
+
+/**
+ * Initialize the background application
+ */
+function initializeBackground() {
+  try {
+    backgroundApp = new BackgroundApp();
+  } catch (error) {
+    Logger.error('Failed to initialize background application', error, 'Main');
+  }
+}
+
+// Initialize on startup and installation
+chrome.runtime.onStartup.addListener(initializeBackground);
+chrome.runtime.onInstalled.addListener(initializeBackground);
+
+// Handle suspension
+chrome.runtime.onSuspend.addListener(() => {
+  if (backgroundApp) {
+    backgroundApp.shutdown();
+  }
+});
+
+// Initialize immediately if not already running
+if (!backgroundApp) {
+  initializeBackground();
+} 
 } 
