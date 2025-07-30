@@ -5,7 +5,7 @@ const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-be
 
 // Configuration
 const bedrockClient = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: 'us-west-2',
 });
 
 const NOVA_LITE_MODEL_ID = 'us.amazon.nova-lite-v1:0';
