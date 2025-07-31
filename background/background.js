@@ -547,12 +547,15 @@ class CacheManager {
     const cached = this.memoryCache.get(key);
     
     if (!cached) {
+      Logger.debug(`❌ CACHE: Miss for key "${key}"`, null, 'CacheManager');
       return null;
     }
 
-    // Check if cache entry has expired
-    const age = Date.now() - cached.timestamp;
+    // Check if entry is still fresh
+    const now = Date.now();
     const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
+    const age = now - cached.timestamp;
+
     
     if (age > maxAge) {
       this.memoryCache.delete(key);
@@ -560,7 +563,7 @@ class CacheManager {
       this.saveToStorage().catch(error => 
         Logger.error('Failed to save cache after expiry cleanup', error, 'CacheManager')
       );
-      Logger.debug(`Cache entry expired and removed: ${key}`, null, 'CacheManager');
+      Logger.debug(`⏰ CACHE: Entry expired and removed: ${key}`, null, 'CacheManager');
       return null;
     }
 
@@ -568,7 +571,7 @@ class CacheManager {
     cached.accessCount = (cached.accessCount || 0) + 1;
     cached.lastAccessed = Date.now();
 
-    Logger.debug(`Cache hit for key: ${key}`, null, 'CacheManager');
+    Logger.debug(`✅ CACHE: Hit for key "${key}" (languages: "${sourceLanguage}" → "${targetLanguage}")`, null, 'CacheManager');
     return cached.data;
   }
 
@@ -1232,6 +1235,10 @@ class MessageRouter {
 
         case CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK:
           this.forwardToSidepanel(message);
+          break;
+
+        case CONFIG.MESSAGES.CLEAR_CACHE:
+          await this.handleClearCache(message, sender, sendResponse);
           break;
 
         default:

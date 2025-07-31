@@ -215,11 +215,10 @@ body {
   align-items: center;
   gap: 16px;
   flex-shrink: 0;
+  position: relative;
 }
 
 .icon-btn {
-  width: 18px;
-  height: 18px;
   background: none;
   border: none;
   cursor: pointer;
@@ -230,6 +229,7 @@ body {
   justify-content: center;
   color: rgba(0, 0, 0, 0.45);
   padding: 0;
+  position: relative;
 }
 
 .icon-btn:hover {
@@ -240,13 +240,45 @@ body {
   opacity: 1;
 }
 
+/* Individual button sizing to match specifications */
+.copy-btn {
+  width: 15px;
+  height: 15px;
+}
+
+.tts-btn {
+  width: 19px;
+  height: 15px;
+}
+
+.checkmark-btn {
+  width: 13px;
+  height: 12px;
+  left: 0;
+  top: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stop-tts-btn {
+  width: 15px;
+  height: 15px;
+  left: 35px; /* Position over TTS button */
+  top: 0;
+  transition: opacity 0.3s ease;
+}
+
 .icon-btn svg {
   width: 100%;
   height: 100%;
 }
 
 .icon-btn svg path {
-  fill: rgba(0, 0, 0, 0.45) !important; /* Force light mode icon colors */
+  fill: rgba(0, 0, 0, 0.45) !important; /* Force specified color */
+}
+
+/* Hide control buttons completely when no AI overview */
+.ai-overview-container[style*="display: none"] + .control-buttons {
+  display: none;
 }
 
 /* Fixed bottom bar - match original design exactly */
@@ -425,7 +457,7 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
-/* Copy feedback animation */
+/* Success animation for checkmark */
 @keyframes checkmarkPulse {
   0% { transform: scale(1); opacity: 0.45; }
   50% { transform: scale(1.1); opacity: 0.8; }
@@ -434,12 +466,6 @@ body {
 
 .icon-btn.success {
   animation: checkmarkPulse 0.4s ease;
-}
-
-/* Empty state when no AI overview yet */
-.ai-overview-container[style*="display: none"] + .control-buttons .icon-btn {
-  opacity: 0.2;
-  cursor: not-allowed;
 }
 
 /* Responsive adjustments */

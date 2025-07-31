@@ -662,12 +662,16 @@ class UIManager {
     if (!ttsBtn || !stopBtn) return;
 
     if (isSpeaking) {
-      ttsBtn.classList.add('hidden');
-      stopBtn.classList.remove('hidden');
+      ttsBtn.style.opacity = '0';
+      ttsBtn.style.pointerEvents = 'none';
+      stopBtn.style.opacity = '0.45';
+      stopBtn.style.pointerEvents = 'auto';
       Logger.debug('TTS buttons updated: showing stop button', null, 'UIManager');
     } else {
-      stopBtn.classList.add('hidden');
-      ttsBtn.classList.remove('hidden');
+      stopBtn.style.opacity = '0';
+      stopBtn.style.pointerEvents = 'none';
+      ttsBtn.style.opacity = '0.45';
+      ttsBtn.style.pointerEvents = 'auto';
       Logger.debug('TTS buttons updated: showing play button', null, 'UIManager');
     }
   }
@@ -682,16 +686,20 @@ class UIManager {
     if (!copyBtn || !checkmarkBtn) return;
 
     // Show checkmark animation
-    copyBtn.classList.add('hidden');
-    checkmarkBtn.classList.remove('hidden');
+    copyBtn.style.opacity = '0';
+    copyBtn.style.pointerEvents = 'none';
+    checkmarkBtn.style.opacity = '0.45';
+    checkmarkBtn.style.pointerEvents = 'auto';
     checkmarkBtn.classList.add('success');
     
     Logger.debug('Copy success feedback shown', null, 'UIManager');
 
     // Reset after delay
     setTimeout(() => {
-      checkmarkBtn.classList.add('hidden');
-      copyBtn.classList.remove('hidden');
+      checkmarkBtn.style.opacity = '0';
+      checkmarkBtn.style.pointerEvents = 'none';
+      copyBtn.style.opacity = '0.45';
+      copyBtn.style.pointerEvents = 'auto';
       checkmarkBtn.classList.remove('success');
       Logger.debug('Copy success feedback reset', null, 'UIManager');
     }, CONFIG.COPY_FEEDBACK_DURATION);
@@ -2037,23 +2045,28 @@ const Logger = {
 let app;
 
 /**
- * Initialize the application when DOM is ready
+ * Initialize the sidepanel application
  */
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializeSidepanel() {
   try {
-    Logger.info('DOM content loaded, starting application', 'Main');
+    const app = new SidepanelApp();
+    await app.initialize();
     
-    // Create and initialize application
-    app = new SidepanelApp();
-    const success = await app.initialize();
+    // Make app globally available for debugging
+    window.sidepanelApp = app;
     
-    if (!success) {
-      Logger.error('Application initialization failed', null, 'Main');
-    }
+    Logger.info('Sidepanel application initialized successfully', 'Main');
   } catch (error) {
-    Logger.error('Fatal error during application startup', error, 'Main');
+    Logger.error('Failed to initialize sidepanel application', error, 'Main');
   }
-});
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeSidepanel);
+} else {
+  initializeSidepanel();
+}
 
 /**
  * Handle page unload cleanup
