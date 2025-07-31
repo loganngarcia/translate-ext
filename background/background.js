@@ -72,7 +72,10 @@ const CONFIG = {
     START_CONTINUOUS_TRANSLATION: 'startContinuousTranslation',
     STOP_CONTINUOUS_TRANSLATION: 'stopContinuousTranslation',
     UPDATE_CONTINUOUS_LANGUAGE: 'updateContinuousLanguage',
-    SIDEPANEL_CLOSED: 'sidepanelClosed'
+    SIDEPANEL_CLOSED: 'sidepanelClosed',
+    GENERATE_SUMMARY: 'generateSummary',
+    STREAM_TRANSLATION_CHUNK: 'streamTranslationChunk',
+    STREAM_SUMMARY_CHUNK: 'streamSummaryChunk'
   },
 
   // Error types
@@ -412,6 +415,7 @@ class StateManager {
 
 /**
  * Manages translation caching for performance optimization
+ * Enhanced with persistent Chrome storage for cross-session caching
  * @class
  */
 class CacheManager {
@@ -419,31 +423,102 @@ class CacheManager {
    * Initialize the cache manager
    */
   constructor() {
-    /** @type {Map<string, Object>} Translation cache */
-    this.cache = new Map();
+    /** @type {Map<string, Object>} In-memory cache for fast access */
+    this.memoryCache = new Map();
     
-    /** @type {number|null} Cleanup interval ID */
+    /** @type {string} Chrome storage key for translation cache */
+    this.storageKey = 'translationCache';
+    
+    /** @type {number} Cleanup interval ID */
     this.cleanupInterval = null;
     
+    /** @type {boolean} Whether storage is available */
+    this.storageAvailable = true;
+    
     this.startCleanupInterval();
+    this.loadFromStorage();
+    
+    Logger.info('CacheManager initialized with persistent storage', 'CacheManager');
   }
 
   /**
-   * Generate cache key from translation parameters
+   * Load cache from Chrome storage into memory
+   * @private
+   */
+  async loadFromStorage() {
+    try {
+      const result = await chrome.storage.local.get([this.storageKey]);
+      const storedCache = result[this.storageKey];
+      
+      if (storedCache) {
+        // Convert stored cache back to Map and validate entries
+        const now = Date.now();
+        const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
+        let loadedCount = 0;
+        let expiredCount = 0;
+        
+        for (const [key, entry] of Object.entries(storedCache)) {
+          if (now - entry.timestamp <= maxAge) {
+            this.memoryCache.set(key, entry);
+            loadedCount++;
+          } else {
+            expiredCount++;
+          }
+        }
+        
+        Logger.info(`Loaded ${loadedCount} cached translations from storage (${expiredCount} expired)`, 'CacheManager');
+        
+        // Save cleaned cache back to storage if we removed expired entries
+        if (expiredCount > 0) {
+          this.saveToStorage();
+        }
+      } else {
+        Logger.info('No cached translations found in storage', 'CacheManager');
+      }
+    } catch (error) {
+      Logger.error('Failed to load cache from storage', error, 'CacheManager');
+      this.storageAvailable = false;
+    }
+  }
+
+  /**
+   * Save current memory cache to Chrome storage
+   * @private
+   */
+  async saveToStorage() {
+    if (!this.storageAvailable) return;
+    
+    try {
+      // Convert Map to plain object for storage
+      const cacheObject = Object.fromEntries(this.memoryCache);
+      
+      await chrome.storage.local.set({
+        [this.storageKey]: cacheObject
+      });
+      
+      Logger.debug(`Saved ${this.memoryCache.size} translations to storage`, null, 'CacheManager');
+    } catch (error) {
+      Logger.error('Failed to save cache to storage', error, 'CacheManager');
+      this.storageAvailable = false;
+    }
+  }
+
+  /**
+   * Generate cache key for content and language pair
    * @param {string} content - Content to translate
    * @param {string} sourceLanguage - Source language
    * @param {string} targetLanguage - Target language
    * @returns {string} Cache key
-   * @private
    */
   generateCacheKey(content, sourceLanguage, targetLanguage) {
-    // Create a simple hash of the content for the key
-    const contentHash = this.simpleHash(content);
-    return `${sourceLanguage}-${targetLanguage}-${contentHash}`;
+    // Create a shorter, more efficient key
+    const contentHash = this.simpleHash(content.substring(0, 200)); // Use first 200 chars for hash
+    const langKey = `${sourceLanguage}-${targetLanguage}`;
+    return `${langKey}:${contentHash}`;
   }
 
   /**
-   * Simple hash function for content
+   * Simple hash function for cache keys
    * @param {string} str - String to hash
    * @returns {string} Hash value
    * @private
@@ -467,7 +542,7 @@ class CacheManager {
    */
   get(content, sourceLanguage, targetLanguage) {
     const key = this.generateCacheKey(content, sourceLanguage, targetLanguage);
-    const cached = this.cache.get(key);
+    const cached = this.memoryCache.get(key);
     
     if (!cached) {
       return null;
@@ -478,10 +553,18 @@ class CacheManager {
     const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
     
     if (age > maxAge) {
-      this.cache.delete(key);
+      this.memoryCache.delete(key);
+      // Async save to storage (don't wait)
+      this.saveToStorage().catch(error => 
+        Logger.error('Failed to save cache after expiry cleanup', error, 'CacheManager')
+      );
       Logger.debug(`Cache entry expired and removed: ${key}`, null, 'CacheManager');
       return null;
     }
+
+    // Update access count and timestamp for LRU tracking
+    cached.accessCount = (cached.accessCount || 0) + 1;
+    cached.lastAccessed = Date.now();
 
     Logger.debug(`Cache hit for key: ${key}`, null, 'CacheManager');
     return cached.data;
@@ -494,40 +577,50 @@ class CacheManager {
    * @param {string} targetLanguage - Target language
    * @param {Object} result - Translation result to cache
    */
-  set(content, sourceLanguage, targetLanguage, result) {
+  async set(content, sourceLanguage, targetLanguage, result) {
     const key = this.generateCacheKey(content, sourceLanguage, targetLanguage);
     
     // Ensure we don't exceed cache size limit
-    if (this.cache.size >= CONFIG.CACHE.MAX_ENTRIES) {
+    if (this.memoryCache.size >= CONFIG.CACHE.MAX_ENTRIES) {
       this.evictOldestEntries();
     }
 
     const cacheEntry = {
       data: result,
       timestamp: Date.now(),
-      accessCount: 1
+      lastAccessed: Date.now(),
+      accessCount: 1,
+      contentLength: content.length
     };
 
-    this.cache.set(key, cacheEntry);
+    this.memoryCache.set(key, cacheEntry);
     Logger.debug(`Translation cached with key: ${key}`, null, 'CacheManager');
+    
+    // Async save to storage (don't wait to avoid blocking)
+    this.saveToStorage().catch(error => 
+      Logger.error('Failed to save cache to storage', error, 'CacheManager')
+    );
   }
 
   /**
    * Evict oldest cache entries to make room for new ones
+   * Uses LRU (Least Recently Used) strategy
    * @private
    */
   evictOldestEntries() {
-    const entries = Array.from(this.cache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const entries = Array.from(this.memoryCache.entries());
+    
+    // Sort by last accessed time (LRU)
+    entries.sort((a, b) => (a[1].lastAccessed || a[1].timestamp) - (b[1].lastAccessed || b[1].timestamp));
     
     // Remove oldest 20% of entries
     const toRemove = Math.floor(CONFIG.CACHE.MAX_ENTRIES * 0.2);
     for (let i = 0; i < toRemove && entries.length > 0; i++) {
       const [key] = entries[i];
-      this.cache.delete(key);
+      this.memoryCache.delete(key);
     }
     
-    Logger.debug(`Evicted ${toRemove} old cache entries`, null, 'CacheManager');
+    Logger.debug(`Evicted ${toRemove} old cache entries using LRU strategy`, null, 'CacheManager');
   }
 
   /**
@@ -543,22 +636,24 @@ class CacheManager {
   }
 
   /**
-   * Clean up expired cache entries
+   * Clean up expired cache entries and save to storage
    */
-  cleanup() {
+  async cleanup() {
     const now = Date.now();
     const maxAge = CONFIG.CACHE.EXPIRY_HOURS * 60 * 60 * 1000;
     let removedCount = 0;
 
-    for (const [key, entry] of this.cache.entries()) {
+    for (const [key, entry] of this.memoryCache.entries()) {
       if (now - entry.timestamp > maxAge) {
-        this.cache.delete(key);
+        this.memoryCache.delete(key);
         removedCount++;
       }
     }
 
     if (removedCount > 0) {
       Logger.debug(`Cleaned up ${removedCount} expired cache entries`, null, 'CacheManager');
+      // Save cleaned cache to storage
+      await this.saveToStorage();
     }
   }
 
@@ -567,38 +662,57 @@ class CacheManager {
    * @returns {Object} Cache statistics
    */
   getStatistics() {
-    const entries = Array.from(this.cache.values());
+    const entries = Array.from(this.memoryCache.values());
     const totalSize = entries.length;
     const averageAge = totalSize > 0 
       ? entries.reduce((sum, entry) => sum + (Date.now() - entry.timestamp), 0) / totalSize
       : 0;
+    
+    const totalContentLength = entries.reduce((sum, entry) => sum + (entry.contentLength || 0), 0);
+    const totalAccessCount = entries.reduce((sum, entry) => sum + (entry.accessCount || 0), 0);
 
     return {
       totalEntries: totalSize,
       maxEntries: CONFIG.CACHE.MAX_ENTRIES,
       utilizationPercent: Math.round((totalSize / CONFIG.CACHE.MAX_ENTRIES) * 100),
-      averageAgeMs: Math.round(averageAge)
+      averageAgeMs: Math.round(averageAge),
+      totalContentLength,
+      totalAccessCount,
+      storageAvailable: this.storageAvailable
     };
   }
 
   /**
-   * Clear all cache entries
+   * Clear all cache entries from memory and storage
    */
-  clear() {
-    this.cache.clear();
-    Logger.info('Translation cache cleared', 'CacheManager');
+  async clear() {
+    this.memoryCache.clear();
+    
+    if (this.storageAvailable) {
+      try {
+        await chrome.storage.local.remove([this.storageKey]);
+        Logger.info('Translation cache cleared from memory and storage', 'CacheManager');
+      } catch (error) {
+        Logger.error('Failed to clear cache from storage', error, 'CacheManager');
+      }
+    } else {
+      Logger.info('Translation cache cleared from memory only', 'CacheManager');
+    }
   }
 
   /**
-   * Stop cleanup interval and clear cache
+   * Stop cleanup interval and save final state
    */
-  shutdown() {
+  async shutdown() {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
-    this.clear();
-    Logger.info('Cache manager shutdown', 'CacheManager');
+    
+    // Save final state to storage
+    await this.saveToStorage();
+    
+    Logger.info('CacheManager shutdown completed', 'CacheManager');
   }
 }
 
@@ -762,23 +876,44 @@ class APIManager {
   }
 
   /**
-   * Translate content using the translation API
-   * @param {string} content - Content to translate
+   * Translate content using AWS Nova model
+   * @param {string|Array} content - Content to translate (single string or array of strings)
    * @param {string} sourceLanguage - Source language
    * @param {string} targetLanguage - Target language
-   * @returns {Promise<Object>} Translation result
+   * @returns {Promise<Object>} Translation result with translations object
    */
   async translateContent(content, sourceLanguage, targetLanguage) {
+    // Handle both single strings and arrays of strings
+    const textToTranslate = Array.isArray(content) ? content.join('\n---SEPARATOR---\n') : content;
+    
     const requestData = {
       action: 'translate',
-      content,
+      content: textToTranslate,
       sourceLanguage,
       targetLanguage,
       model: CONFIG.NOVA.MODEL_ID
     };
 
     const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.TRANSLATE, requestData);
-    return response.translations || {};
+    
+    // If we sent an array, we need to split the response back
+    if (Array.isArray(content) && response.translations) {
+      const combinedTranslations = {};
+      const originalTexts = content;
+      
+      // Map individual texts to their translations
+      originalTexts.forEach(originalText => {
+        // Try to find the translation for this specific text
+        const translation = response.translations[originalText] || 
+                           response.translations[originalText.trim()] ||
+                           originalText; // Fallback to original if not found
+        combinedTranslations[originalText] = translation;
+      });
+      
+      return { success: true, translations: combinedTranslations };
+    }
+    
+    return { success: true, translations: response.translations || {}, translatedText: response.translations?.[content] || content };
   }
 
   /**
@@ -915,6 +1050,26 @@ class MessageRouter {
           this.handleSidepanelClosed(message, sender);
           break;
 
+        case CONFIG.MESSAGES.TRANSLATION_STARTED:
+          this.handleTranslationStarted(message, sender);
+          break;
+
+        case CONFIG.MESSAGES.TRANSLATION_COMPLETE:
+          this.handleTranslationComplete(message, sender);
+          break;
+
+        case CONFIG.MESSAGES.GENERATE_SUMMARY:
+          await this.handleGenerateSummary(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.STREAM_TRANSLATION_CHUNK:
+          this.forwardToSidepanel(message);
+          break;
+
+        case CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK:
+          this.forwardToSidepanel(message);
+          break;
+
         default:
           Logger.warn(`Unknown message action: ${message.action}`, 'MessageRouter');
           sendResponse({ success: false, error: 'Unknown action' });
@@ -1034,54 +1189,186 @@ class MessageRouter {
   }
 
   /**
-   * Handle single text translation request
-   * @param {Object} message - Message data
+   * Handle translate text request
+   * @param {Object} message - Message from content script
    * @param {Object} sender - Sender information
    * @param {Function} sendResponse - Response callback
-   * @private
    */
   async handleTranslateText(message, sender, sendResponse) {
-    const { text, sourceLanguage, targetLanguage } = message;
+    const requestStartTime = performance.now();
+    const { texts, sourceLanguage, targetLanguage, batchInfo } = message;
+    const tabId = sender.tab?.id;
+
+    // Enhanced logging for translation requests with timing
+    console.log(`🔥 [BACKGROUND LOG] Translation request received:`, {
+      tabId,
+      textsCount: Array.isArray(texts) ? texts.length : 1,
+      sourceLanguage,
+      targetLanguage,
+      batchInfo: batchInfo || 'N/A',
+      timestamp: new Date().toISOString()
+    });
+
+    if (!texts || (!Array.isArray(texts) && typeof texts !== 'string')) {
+      const error = 'No text provided for translation';
+      Logger.error(error, null, 'MessageRouter');
+      sendResponse({ success: false, error });
+      return;
+    }
+
+    if (!targetLanguage) {
+      const error = 'No target language specified';
+      Logger.error(error, null, 'MessageRouter');
+      sendResponse({ success: false, error });
+      return;
+    }
 
     try {
-      if (!text || !targetLanguage) {
-        throw new Error('Missing required parameters: text and targetLanguage');
+      // Handle both array and string formats for backward compatibility
+      const textsToTranslate = Array.isArray(texts) ? texts : [texts];
+      
+      console.log(`📝 [BACKGROUND LOG] Processing batch:`, {
+        textsCount: textsToTranslate.length,
+        totalCharacters: textsToTranslate.reduce((sum, text) => sum + text.length, 0),
+        averageLength: Math.round(textsToTranslate.reduce((sum, text) => sum + text.length, 0) / textsToTranslate.length),
+        textSamples: textsToTranslate.slice(0, 3).map(text => text.substring(0, 50) + (text.length > 50 ? '...' : ''))
+      });
+
+      const cacheCheckStart = performance.now();
+      
+      // Check cache for all texts first
+      const translations = {};
+      const uncachedTexts = [];
+      let cacheHits = 0;
+      
+      for (const text of textsToTranslate) {
+        if (!text || typeof text !== 'string' || text.trim().length === 0) {
+          console.warn(`⚠️ [BACKGROUND LOG] Skipping empty or invalid text`);
+          continue;
+        }
+
+        const cached = this.cacheManager.get(text, sourceLanguage, targetLanguage);
+        if (cached) {
+          translations[text] = cached.translatedText;
+          cacheHits++;
+        } else {
+          uncachedTexts.push(text);
+        }
       }
 
-      Logger.debug(`Translating batch text (${text.length} chars)`, null, 'MessageRouter');
+      const cacheCheckTime = performance.now() - cacheCheckStart;
 
-      // Check if this is a combined text with separators (from streaming)
-      const hasSeparators = text.includes('\n---SEPARATOR---\n');
-      
-      const translations = await this.apiManager.translateContent(text, sourceLanguage, targetLanguage);
-      
-      if (hasSeparators) {
-        // Handle combined text from streaming - reconstruct translated parts
-        const parts = text.split('\n---SEPARATOR---\n');
-        const translatedParts = parts.map(part => {
-          const trimmedPart = part.trim();
-          // Try to find translation for this part
-          const translated = translations[trimmedPart] || 
-                            translations[part] || 
-                            Object.keys(translations).find(key => key.includes(trimmedPart.substring(0, 20)));
+      console.log(`💾 [BACKGROUND LOG] Cache check completed:`, {
+        totalTexts: textsToTranslate.length,
+        cacheHits: cacheHits,
+        uncachedTexts: uncachedTexts.length,
+        cacheHitRate: `${Math.round((cacheHits / textsToTranslate.length) * 100)}%`,
+        cacheCheckTimeMs: Math.round(cacheCheckTime)
+      });
+
+      let apiCallTime = 0;
+      let firstTokenTime = null;
+
+      // If we have uncached texts, translate them in batch
+      if (uncachedTexts.length > 0) {
+        try {
+          console.log(`🌐 [BACKGROUND LOG] Starting API translation:`, {
+            uncachedTexts: uncachedTexts.length,
+            sourceLanguage,
+            targetLanguage
+          });
           
-          return translations[translated] || translated || trimmedPart;
-        });
-        
-        const translatedText = translatedParts.join('\n---SEPARATOR---\n');
-        sendResponse({ success: true, translatedText });
-      } else {
-        // Handle single text - find best match
-        const translatedText = translations[text] || 
-                              translations[text.trim()] ||
-                              Object.values(translations)[0] || 
-                              text;
-        sendResponse({ success: true, translatedText });
+          const apiStartTime = performance.now();
+          
+          const result = await this.apiManager.translateContent(uncachedTexts, sourceLanguage, targetLanguage);
+          
+          apiCallTime = performance.now() - apiStartTime;
+          firstTokenTime = apiCallTime; // For now, treating the entire API call as first token time
+          
+          if (result && result.success && result.translations) {
+            // Add to translations and cache
+            Object.entries(result.translations).forEach(([originalText, translatedText]) => {
+              translations[originalText] = translatedText;
+              
+              // Cache the result
+              this.cacheManager.set(originalText, sourceLanguage, targetLanguage, {
+                success: true,
+                translatedText: translatedText
+              });
+            });
+            
+            console.log(`✅ [BACKGROUND LOG] API translation completed:`, {
+              translatedCount: Object.keys(result.translations).length,
+              apiCallTimeMs: Math.round(apiCallTime),
+              averageTimePerText: Math.round(apiCallTime / uncachedTexts.length)
+            });
+          } else {
+            console.warn(`⚠️ [BACKGROUND LOG] API translation failed, using fallback`);
+            // Use original texts as fallback
+            uncachedTexts.forEach(text => {
+              translations[text] = text;
+            });
+          }
+        } catch (error) {
+          apiCallTime = performance.now() - requestStartTime; // Record error time
+          console.error(`💥 [BACKGROUND LOG] API translation error:`, {
+            error: error.message,
+            timeElapsedMs: Math.round(apiCallTime)
+          });
+          // Use original texts as fallback
+          uncachedTexts.forEach(text => {
+            translations[text] = text;
+          });
+        }
       }
-      
+
+      const totalTime = performance.now() - requestStartTime;
+      const successfulTranslations = Object.keys(translations).length;
+
+      console.log(`🎉 [BACKGROUND LOG] Translation batch completed:`, {
+        requested: textsToTranslate.length,
+        successful: successfulTranslations,
+        cached: cacheHits,
+        newTranslations: uncachedTexts.length,
+        successRate: `${Math.round((successfulTranslations / textsToTranslate.length) * 100)}%`,
+        timing: {
+          totalTimeMs: Math.round(totalTime),
+          cacheCheckMs: Math.round(cacheCheckTime),
+          apiCallMs: Math.round(apiCallTime),
+          timeToFirstTokenMs: firstTokenTime ? Math.round(firstTokenTime) : 'N/A',
+          averageTimePerText: Math.round(totalTime / textsToTranslate.length)
+        },
+        batchInfo: batchInfo || 'N/A'
+      });
+
+      sendResponse({
+        success: true,
+        translations: translations,
+        sourceLanguage: sourceLanguage,
+        targetLanguage: targetLanguage,
+        timing: {
+          totalMs: Math.round(totalTime),
+          apiMs: Math.round(apiCallTime),
+          cacheHits: cacheHits
+        }
+      });
+
     } catch (error) {
-      Logger.error('Failed to translate text', error, 'MessageRouter');
-      sendResponse({ success: false, error: error.message });
+      const totalTime = performance.now() - requestStartTime;
+      console.error(`💀 [BACKGROUND LOG] Translation request failed:`, {
+        error: error.message,
+        timeElapsedMs: Math.round(totalTime),
+        sourceLanguage,
+        targetLanguage
+      });
+      
+      sendResponse({
+        success: false,
+        error: `Translation failed: ${error.message}`,
+        timing: {
+          totalMs: Math.round(totalTime)
+        }
+      });
     }
   }
 
@@ -1280,6 +1567,117 @@ class MessageRouter {
       });
       
       Logger.info(`Continuous translation stopped due to sidepanel closure for tab ${tabId}`, 'MessageRouter');
+    }
+  }
+
+  /**
+   * Handle translation started notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handleTranslationStarted(message, sender) {
+    if (sender.tab?.id) {
+      this.stateManager.setTranslationState(sender.tab.id, {
+        isTranslating: true,
+        startTime: Date.now()
+      });
+    }
+
+    // Forward to sidepanel
+    this.forwardToSidepanel(message);
+    Logger.debug('Translation started notification handled', null, 'MessageRouter');
+  }
+
+  /**
+   * Handle translation complete notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handleTranslationComplete(message, sender) {
+    if (sender.tab?.id) {
+      this.stateManager.setTranslationState(sender.tab.id, {
+        isTranslating: false,
+        lastTranslationTime: Date.now()
+      });
+    }
+
+    // Forward to sidepanel
+    this.forwardToSidepanel(message);
+    Logger.debug('Translation complete notification handled', null, 'MessageRouter');
+  }
+
+  /**
+   * Handle generate summary request (separate from translation)
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleGenerateSummary(message, sender, sendResponse) {
+    const { content, targetLanguage, pageUrl, streaming = false } = message;
+
+    try {
+      if (!content || !targetLanguage) {
+        throw new Error('Missing required parameters: content and targetLanguage');
+      }
+
+      Logger.debug('Generating summary independently', { targetLanguage, pageUrl }, 'MessageRouter');
+
+      if (streaming) {
+        // Start streaming summary generation
+        this.generateStreamingSummary(content, targetLanguage, pageUrl, sender.tab?.id);
+        sendResponse({ success: true, streaming: true });
+      } else {
+        // Generate summary normally
+        const summary = await this.apiManager.generateSummary(content, targetLanguage, pageUrl);
+        sendResponse({ success: true, summary });
+      }
+    } catch (error) {
+      Logger.error('Failed to generate summary', error, 'MessageRouter');
+      sendResponse({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Generate streaming summary and send chunks
+   * @param {string} content - Content to summarize
+   * @param {string} targetLanguage - Target language
+   * @param {string} pageUrl - Page URL
+   * @param {number} tabId - Tab ID
+   * @private
+   */
+  async generateStreamingSummary(content, targetLanguage, pageUrl, tabId) {
+    try {
+      // Start summary generation with streaming
+      const summaryPromise = this.apiManager.generateSummary(content, targetLanguage, pageUrl);
+      
+      // Send initial chunk
+      this.forwardToSidepanel({
+        action: CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK,
+        tabId,
+        chunk: { type: 'start', message: 'Generating summary...' }
+      });
+
+      const summary = await summaryPromise;
+
+      // Send final chunk with complete summary
+      this.forwardToSidepanel({
+        action: CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK,
+        tabId,
+        chunk: { type: 'complete', summary }
+      });
+
+    } catch (error) {
+      Logger.error('Streaming summary generation failed', error, 'MessageRouter');
+      
+      // Send error chunk
+      this.forwardToSidepanel({
+        action: CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK,
+        tabId,
+        chunk: { type: 'error', error: error.message }
+      });
     }
   }
 }

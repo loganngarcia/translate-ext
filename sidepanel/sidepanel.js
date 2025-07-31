@@ -571,6 +571,86 @@ class UIManager {
       }
     }, 5000);
   }
+
+  /**
+   * Update translation progress
+   * @param {Object} progress - Progress information
+   */
+  updateTranslationProgress(progress) {
+    try {
+      const button = this.elements.translateBtn;
+      if (!button) return;
+
+      const span = button.querySelector('span');
+      if (span && progress.message) {
+        span.textContent = progress.message;
+      }
+
+      Logger.debug('Translation progress updated', progress, 'UIManager');
+    } catch (error) {
+      Logger.error('Failed to update translation progress', error, 'UIManager');
+    }
+  }
+
+  /**
+   * Show summary loading state
+   * @param {string} message - Loading message
+   */
+  showSummaryLoading(message) {
+    try {
+      const aiOverview = this.elements.aiOverview;
+      if (!aiOverview) return;
+
+      // Create loading indicator
+      const loadingHtml = `
+        <div class="summary-loading">
+          <div class="loading-spinner"></div>
+          <p>${message}</p>
+        </div>
+      `;
+
+      aiOverview.innerHTML = loadingHtml;
+      aiOverview.style.display = 'block';
+
+      Logger.debug('Summary loading state shown', null, 'UIManager');
+    } catch (error) {
+      Logger.error('Failed to show summary loading', error, 'UIManager');
+    }
+  }
+
+  /**
+   * Update partial summary during streaming
+   * @param {Object} partial - Partial summary data
+   */
+  updatePartialSummary(partial) {
+    try {
+      const aiOverview = this.elements.aiOverview;
+      if (!aiOverview) return;
+
+      // Update with partial content
+      if (partial.title) {
+        const titleElement = aiOverview.querySelector('.summary-title');
+        if (titleElement) {
+          titleElement.textContent = partial.title;
+        }
+      }
+
+      if (partial.points && Array.isArray(partial.points)) {
+        const pointsContainer = aiOverview.querySelector('.summary-points');
+        if (pointsContainer) {
+          pointsContainer.innerHTML = '';
+          partial.points.forEach((point, index) => {
+            const pointElement = this.createSummaryPointElement(point, index);
+            pointsContainer.appendChild(pointElement);
+          });
+        }
+      }
+
+      Logger.debug('Partial summary updated', partial, 'UIManager');
+    } catch (error) {
+      Logger.error('Failed to update partial summary', error, 'UIManager');
+    }
+  }
 }
 
 // =============================================================================
@@ -846,11 +926,8 @@ class EventManager {
     if (!translateBtn) return;
 
     translateBtn.addEventListener('click', async () => {
-      if (this.stateManager.get('isTranslating')) {
-        Logger.warn('Translation already in progress', 'EventManager');
-        return;
-      }
-
+      // Remove the broken isTranslating check that prevents stopping translation
+      // The handleTranslateAction function handles the start/stop logic properly
       await this.handleTranslateAction();
     });
   }
@@ -900,6 +977,14 @@ class EventManager {
 
           case 'continuousTranslationError':
             this.handleContinuousTranslationError(message);
+            break;
+
+          case 'streamTranslationChunk':
+            this.handleStreamTranslationChunk(message);
+            break;
+
+          case 'streamSummaryChunk':
+            this.handleStreamSummaryChunk(message);
             break;
             
           default:
@@ -1064,8 +1149,12 @@ class EventManager {
         this.uiManager.updateTranslateButton(false, true); // not loading, but continuous mode
         Logger.info('Continuous translation started successfully', 'EventManager');
       } else {
-        // Stop continuous translation mode
+        // Stop continuous translation mode - reset state immediately
+        this.stateManager.set('isTranslating', false);
         this.stateManager.set('continuousTranslation', false);
+        
+        // Update UI immediately to prevent button state issues
+        this.uiManager.updateTranslateButton(false, false);
         
         Logger.info('Stopping continuous translation', 'EventManager');
 
@@ -1076,19 +1165,19 @@ class EventManager {
         });
 
         if (!response || !response.success) {
-          throw new Error(response?.error || 'Failed to stop continuous translation');
+          Logger.error('Failed to stop continuous translation', response?.error || 'Unknown error', 'EventManager');
+          // Don't throw here - we already reset the UI state
         }
 
-        // Update UI to show continuous translation is stopped
-        this.uiManager.updateTranslateButton(false, false);
-        this.stateManager.set('isTranslating', false);
         Logger.info('Continuous translation stopped successfully', 'EventManager');
       }
     } catch (error) {
       Logger.error('Translation action failed', error, 'EventManager');
       this.uiManager.showErrorMessage('Translation failed. Please try again.');
+      // Reset state on any error
       this.stateManager.set('isTranslating', false);
       this.stateManager.set('continuousTranslation', false);
+      this.uiManager.updateTranslateButton(false, false);
     }
   }
 
@@ -1207,6 +1296,77 @@ class EventManager {
       
       // Show error message
       this.uiManager.showErrorMessage(`Failed to restart translation on new page: ${error}`);
+    }
+  }
+
+  /**
+   * Handle streaming translation chunk
+   * @param {Object} message - Message data
+   * @private
+   */
+  handleStreamTranslationChunk(message) {
+    const { chunk, tabId } = message;
+    const currentTabId = this.stateManager.get('currentTabId');
+    
+    // Only handle if this is for the current tab
+    if (tabId === currentTabId) {
+      Logger.debug('Received translation chunk', chunk, 'EventManager');
+      
+      if (chunk.type === 'start') {
+        // Translation starting
+        this.stateManager.set('isTranslating', true);
+      } else if (chunk.type === 'progress') {
+        // Translation progress update
+        if (chunk.progress) {
+          this.uiManager.updateTranslationProgress(chunk.progress);
+        }
+      } else if (chunk.type === 'complete') {
+        // Translation completed
+        this.stateManager.set('isTranslating', false);
+      } else if (chunk.type === 'error') {
+        // Translation error
+        this.stateManager.set('isTranslating', false);
+        this.uiManager.showErrorMessage(`Translation error: ${chunk.error}`);
+      }
+    }
+  }
+
+  /**
+   * Handle streaming summary chunk
+   * @param {Object} message - Message data
+   * @private
+   */
+  handleStreamSummaryChunk(message) {
+    const { chunk, tabId } = message;
+    const currentTabId = this.stateManager.get('currentTabId');
+    
+    // Only handle if this is for the current tab
+    if (tabId === currentTabId) {
+      Logger.debug('Received summary chunk', chunk, 'EventManager');
+      
+      if (chunk.type === 'start') {
+        // Summary generation starting
+        this.uiManager.showSummaryLoading(chunk.message || 'Generating summary...');
+      } else if (chunk.type === 'progress') {
+        // Summary progress update
+        if (chunk.partial) {
+          this.uiManager.updatePartialSummary(chunk.partial);
+        }
+      } else if (chunk.type === 'complete') {
+        // Summary completed
+        if (chunk.summary) {
+          this.handleSummaryUpdate(chunk.summary);
+        }
+      } else if (chunk.type === 'error') {
+        // Summary error
+        const errorSummary = {
+          title: 'Summary Error',
+          points: [
+            { emoji: '⚠️', text: `Failed to generate summary: ${chunk.error}` }
+          ]
+        };
+        this.handleSummaryUpdate(errorSummary);
+      }
     }
   }
 

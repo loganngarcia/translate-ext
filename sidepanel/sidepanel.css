@@ -318,6 +318,31 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); }
 }
 
+/* Summary loading styles */
+.summary-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  text-align: center;
+}
+
+.summary-loading .loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #EBEBEB;
+  border-top: 2px solid #277AD9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+.summary-loading p {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.7);
+}
+
 /* Scrollbar styling - light mode only */
 .summary-points::-webkit-scrollbar {
   width: 4px;

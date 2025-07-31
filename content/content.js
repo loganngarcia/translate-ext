@@ -451,19 +451,16 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
     // Send to background for translation (no visual feedback)
     const response = await chrome.runtime.sendMessage({
       action: 'translateText',
-      text: combinedText,
+      texts: textsToTranslate, // Send array of texts instead of combined string
       sourceLanguage,
       targetLanguage
     });
     
-    if (response.success && response.translatedText) {
-      // Split the response back into individual translations
-      const translatedParts = response.translatedText.split('\n---SEPARATOR---\n');
-      
-      // Apply translations immediately to direct text content
-      textsToTranslate.forEach((originalText, index) => {
+    if (response.success && response.translations) {
+      // Apply translations using the translations object
+      textsToTranslate.forEach((originalText) => {
         const element = textMap.get(originalText);
-        const translatedText = translatedParts[index]?.trim();
+        const translatedText = response.translations[originalText];
         
         if (element && translatedText && translatedText !== originalText) {
           // Replace only the direct text content, preserving child elements
@@ -472,7 +469,7 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
         }
       });
       
-      console.log(`✅ Batch ${batchNum} completed - translated ${translatedParts.length} texts`);
+      console.log(`✅ Batch ${batchNum} completed - translated ${Object.keys(response.translations).length} texts`);
     } else {
       throw new Error(response.error || 'Translation failed');
     }

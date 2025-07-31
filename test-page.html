@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Test Page - AI Page Translator</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Header and Navigation */
+        header { background: #333; color: white; padding: 1rem; margin-bottom: 2rem; }
+        .site-header h1 { margin: 0; }
+        nav { background: #666; padding: 0.5rem; margin-bottom: 2rem; }
+        .nav a { color: white; text-decoration: none; margin-right: 1rem; }
+        
+        /* Main content */
+        main { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        article { background: #f9f9f9; padding: 1.5rem; border-radius: 8px; }
+        aside { background: #e9e9e9; padding: 1rem; border-radius: 8px; }
+        
+        /* Hidden content */
+        .hidden { display: none; }
+        .sr-only { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+        
+        /* Form elements */
+        .search-box { background: white; padding: 1rem; border: 1px solid #ddd; margin-bottom: 1rem; }
+        .form-control { width: 100%; padding: 0.5rem; margin: 0.5rem 0; }
+        
+        /* Dropdown */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display: none; position: absolute; background: white; border: 1px solid #ddd; min-width: 160px; z-index: 1; }
+        .dropdown:hover .dropdown-menu { display: block; }
+        .dropdown-menu a { color: black; padding: 8px 16px; text-decoration: none; display: block; }
+        
+        /* Footer */
+        footer { background: #333; color: white; padding: 1rem; margin-top: 2rem; }
+        .copyright { font-size: 0.8em; opacity: 0.7; }
+        
+        /* Technical elements */
+        .metadata { font-size: 0.8em; color: #666; }
+        .tech-info { background: #f0f0f0; padding: 0.5rem; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <!-- Navigation (should be skipped) -->
+    <header class="site-header">
+        <h1>AI Translation Test Site</h1>
+    </header>
+    
+    <nav class="navigation">
+        <a href="#home">HOME</a>
+        <a href="#about">ABOUT</a>
+        <a href="#services">SERVICES</a>
+        <a href="#contact">CONTACT</a>
+        <a href="#login">LOGIN</a>
+    </nav>
+
+    <!-- Search box (should be skipped) -->
+    <div class="search-box">
+        <input type="text" class="form-control" placeholder="Search our website...">
+        <button type="submit">SEARCH</button>
+    </div>
+
+    <div class="container">
+        <main>
+            <!-- Main content (should be translated) -->
+            <article>
+                <h1>Welcome to Our Amazing Website</h1>
+                <p>This is the main content area where we share important information about our products and services. This text should definitely be translated as it's the primary content users come to read.</p>
+                
+                <h2>Product Features</h2>
+                <p>Our revolutionary product offers incredible benefits that will transform your daily workflow. Here are some key features:</p>
+                
+                <ul>
+                    <li>Advanced artificial intelligence capabilities</li>
+                    <li>Real-time collaboration tools</li>
+                    <li>FAQ section with common questions</li>
+                    <li>API integration for developers</li>
+                    <li>24/7 customer support</li>
+                </ul>
+                
+                <h3>Customer Testimonials</h3>
+                <blockquote>
+                    "This product has completely changed how we work. The AI features are incredible and save us hours every day."
+                </blockquote>
+                
+                <p>Another satisfied customer said: <em>"The user interface is intuitive and the support team is very responsive."</em></p>
+                
+                <!-- Technical metadata (should be skipped) -->
+                <div class="metadata">
+                    <span class="date">Published: 2024-01-15</span> | 
+                    <span class="author">Author: john.doe@company.com</span> | 
+                    <span class="id">ID: PROD-2024-001</span> |
+                    <span class="version">v2.1.0</span>
+                </div>
+                
+                <!-- Some technical info that shouldn't be translated -->
+                <div class="tech-info">
+                    API_KEY: sk-1234567890abcdef<br>
+                    Server: https://api.example.com/v1<br>
+                    Status: 200 OK<br>
+                    Response time: 45ms
+                </div>
+            </article>
+            
+            <!-- Sidebar content -->
+            <aside>
+                <h3>Quick Links</h3>
+                <p>Find what you're looking for quickly:</p>
+                
+                <!-- Dropdown menu -->
+                <div class="dropdown">
+                    <button>More Options ▼</button>
+                    <div class="dropdown-menu">
+                        <a href="#documentation">Documentation</a>
+                        <a href="#tutorials">Video Tutorials</a>
+                        <a href="#community">Community Forum</a>
+                        <a href="#support">Get Support</a>
+                    </div>
+                </div>
+                
+                <h4>Recent Updates</h4>
+                <p>Check out our latest improvements and new features that make your experience even better.</p>
+                
+                <!-- Social sharing (typically not translated) -->
+                <div class="social">
+                    <span>Share:</span>
+                    <button class="btn-social">Facebook</button>
+                    <button class="btn-social">Twitter</button>
+                    <button class="btn-social">LinkedIn</button>
+                </div>
+                
+                <!-- Advertisement (should be skipped) -->
+                <div class="ads">
+                    <p>Advertisement</p>
+                    <div class="ad-banner">
+                        <span>Sponsored Content</span>
+                    </div>
+                </div>
+            </aside>
+        </main>
+        
+        <!-- Hidden content that shouldn't be translated -->
+        <div class="hidden">
+            <p>This is hidden content that users cannot see and should not be translated.</p>
+        </div>
+        
+        <!-- Screen reader only content -->
+        <div class="sr-only">
+            <p>This is screen reader only content for accessibility.</p>
+        </div>
+        
+        <!-- More content that should be translated -->
+        <section>
+            <h2>About Our Company</h2>
+            <p>We are a leading technology company focused on creating innovative solutions for businesses worldwide. Our mission is to make technology accessible and powerful for everyone.</p>
+            
+            <p>Founded in 2020, we have grown from a small startup to a global organization serving thousands of customers across multiple industries.</p>
+        </section>
+    </div>
+    
+    <!-- Footer (typically skipped) -->
+    <footer>
+        <div class="footer-content">
+            <p>Contact us: info@company.com | Phone: +1-555-0123</p>
+            <div class="copyright">
+                <p>© 2024 AI Translation Test Company. All rights reserved.</p>
+                <p>Privacy Policy | Terms of Service | Cookie Policy</p>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Technical scripts and data (should be skipped) -->
+    <script type="application/json" id="page-data">
+    {
+        "pageId": "test-001",
+        "version": "1.0.0",
+        "lastModified": "2024-01-15T10:30:00Z"
+    }
+    </script>
+    
+    <script>
+        // Interactive functionality for testing dynamic content
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded for translation testing');
+            
+            // Add some dynamic content after a delay
+            setTimeout(function() {
+                const dynamicContent = document.createElement('div');
+                dynamicContent.innerHTML = '<p>This is dynamically added content that should be detected and translated by continuous translation.</p>';
+                document.querySelector('main article').appendChild(dynamicContent);
+            }, 2000);
+        });
+    </script>
+</body>
+</html> 

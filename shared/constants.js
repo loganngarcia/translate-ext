@@ -370,7 +370,10 @@ export const CHROME = {
     START_CONTINUOUS_TRANSLATION: 'startContinuousTranslation',
     STOP_CONTINUOUS_TRANSLATION: 'stopContinuousTranslation',
     UPDATE_CONTINUOUS_LANGUAGE: 'updateContinuousLanguage',
-    SIDEPANEL_CLOSED: 'sidepanelClosed'
+    SIDEPANEL_CLOSED: 'sidepanelClosed',
+    GENERATE_SUMMARY: 'generateSummary',
+    STREAM_TRANSLATION_CHUNK: 'streamTranslationChunk',
+    STREAM_SUMMARY_CHUNK: 'streamSummaryChunk'
   },
   
   /** Tab and window management */
