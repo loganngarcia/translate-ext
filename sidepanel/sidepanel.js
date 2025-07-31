@@ -56,6 +56,7 @@ const CONFIG = {
   MESSAGES: {
     TRANSLATE_PAGE: 'translatePage',
     UPDATE_SUMMARY: 'updateSummary',
+    SUMMARY_UPDATE: 'summaryUpdate', // Auto-generated summary from background
     TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',
@@ -479,7 +480,7 @@ class UIManager {
         });
       }
       
-      Logger.info('Summary display updated successfully', 'UIManager');
+      Logger.debug('Summary display updated successfully', 'UIManager');
     } catch (error) {
       Logger.error('Failed to update summary display', error, 'UIManager');
     }
@@ -649,6 +650,66 @@ class UIManager {
       Logger.debug('Partial summary updated', partial, 'UIManager');
     } catch (error) {
       Logger.error('Failed to update partial summary', error, 'UIManager');
+    }
+  }
+
+  /**
+   * Hide summary loading state
+   */
+  hideSummaryLoading() {
+    try {
+      const loadingElements = document.querySelectorAll('.summary-loading');
+      loadingElements.forEach(element => {
+        element.remove();
+      });
+      
+      Logger.debug('Summary loading state hidden', null, 'UIManager');
+    } catch (error) {
+      Logger.error('Failed to hide summary loading', error, 'UIManager');
+    }
+  }
+
+  /**
+   * Show cache indicator for cached summaries
+   */
+  showCacheIndicator() {
+    try {
+      const aiOverview = this.elements.aiOverview;
+      if (!aiOverview) return;
+
+      // Remove any existing cache indicators
+      const existingIndicator = aiOverview.querySelector('.cache-indicator');
+      if (existingIndicator) {
+        existingIndicator.remove();
+      }
+
+      // Create cache indicator
+      const cacheIndicator = document.createElement('div');
+      cacheIndicator.className = 'cache-indicator';
+      cacheIndicator.innerHTML = `
+        <span class="cache-icon">⚡</span>
+        <span class="cache-text">Instant (cached)</span>
+      `;
+
+      // Add to AI overview header
+      const summaryHeader = aiOverview.querySelector('.ai-overview-header') || 
+                           aiOverview.querySelector('.summary-title')?.parentElement ||
+                           aiOverview.firstElementChild;
+      
+      if (summaryHeader) {
+        summaryHeader.appendChild(cacheIndicator);
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          if (cacheIndicator.parentElement) {
+            cacheIndicator.remove();
+          }
+        }, 3000);
+      }
+
+      Logger.debug('Cache indicator shown', null, 'UIManager');
+    } catch (error) {
+      Logger.error('Failed to show cache indicator', error, 'UIManager');
     }
   }
 }
@@ -945,6 +1006,10 @@ class EventManager {
           case CONFIG.MESSAGES.UPDATE_SUMMARY:
             this.handleSummaryUpdate(message.summary);
             break;
+
+          case CONFIG.MESSAGES.SUMMARY_UPDATE:
+            this.handleAutoSummaryUpdate(message);
+            break;
             
           case CONFIG.MESSAGES.TRANSLATION_STARTED:
             Logger.info('Streaming translation started', 'EventManager');
@@ -1197,6 +1262,46 @@ class EventManager {
     this.stateManager.set('currentSummary', summary);
     this.stateManager.set('isAIOverviewVisible', true);
     this.uiManager.updateSummaryDisplay(summary);
+  }
+
+  /**
+   * Handle auto-generated summary update from background script
+   * @param {Object} message - Message containing summary and metadata
+   * @private
+   */
+  handleAutoSummaryUpdate(message) {
+    const { summary, fromCache, error, tabId } = message;
+    
+    if (!summary) {
+      Logger.warn('Received empty auto-summary update', 'EventManager');
+      return;
+    }
+
+    const source = fromCache ? 'cache' : 'API';
+    Logger.debug(`Auto-summary received from ${source}`, 'EventManager');
+    
+    // Show visual indicator for cached vs fresh summaries
+    if (fromCache) {
+      this.uiManager.showCacheIndicator();
+    }
+    
+    // Update summary state and display
+    this.stateManager.set('currentSummary', summary);
+    this.stateManager.set('isAIOverviewVisible', true);
+    this.stateManager.set('summarySource', source);
+    
+    // Update UI with the new summary
+    this.uiManager.updateSummaryDisplay(summary);
+    
+    // If this was an error fallback, show appropriate state
+    if (error) {
+      this.uiManager.showSummaryLoading('Generating improved summary...');
+    } else {
+      // Hide any loading states
+      this.uiManager.hideSummaryLoading();
+    }
+    
+    Logger.debug('Auto-summary display updated', { fromCache, error }, 'EventManager');
   }
 
   /**

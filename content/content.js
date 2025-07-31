@@ -160,9 +160,6 @@ async function handleTranslatePage(message, sendResponse) {
       });
     }
     
-    // Start summary generation in parallel (non-blocking)
-    generateSummaryAsync(content.text, targetLanguage, content.url);
-    
     // Process elements in chunks for streaming translation
     await processElementsInStreaming(textElements, sourceLanguage, targetLanguage);
     
@@ -494,35 +491,7 @@ function replaceDirectTextContent(element, newText) {
   }
 }
 
-/**
- * Generate summary asynchronously without blocking translation
- * @param {string} content - Page content
- * @param {string} targetLanguage - Target language
- * @param {string} pageUrl - Page URL
- */
-async function generateSummaryAsync(content, targetLanguage, pageUrl) {
-  try {
-    console.log('📋 Generating summary in parallel...');
-    
-    const response = await chrome.runtime.sendMessage({
-      action: 'processTranslation',
-      content: content.substring(0, 3000), // Limit content for summary
-      sourceLanguage: 'auto',
-      targetLanguage,
-      pageUrl
-    });
-    
-    if (response.success && response.summary) {
-      chrome.runtime.sendMessage({
-        action: 'updateSummary',
-        summary: response.summary
-      });
-      console.log('📋 Summary generated successfully');
-    }
-  } catch (error) {
-    console.error('❌ Summary generation failed:', error);
-  }
-}
+
 
 /**
  * Check if text should be translated

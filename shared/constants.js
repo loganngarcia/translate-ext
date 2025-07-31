@@ -146,6 +146,7 @@ export const STORAGE = {
   CACHE: {
     MAX_ENTRIES: 50,
     EXPIRY_HOURS: 24,
+    SUMMARY_EXPIRY_HOURS: 6, // Summaries expire faster as content may change
     CLEANUP_INTERVAL: 3600000 // 1 hour in milliseconds
   }
 };
@@ -360,6 +361,7 @@ export const CHROME = {
     PROCESS_TRANSLATION: 'processTranslation',
     TRANSLATE_TEXT: 'translateText',
     UPDATE_SUMMARY: 'updateSummary',
+    SUMMARY_UPDATE: 'summaryUpdate', // Auto-generated summary from background
     TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',

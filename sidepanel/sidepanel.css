@@ -343,6 +343,43 @@ body {
   color: rgba(0, 0, 0, 0.7);
 }
 
+/* Cache indicator styles */
+.cache-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(52, 199, 89, 0.1);
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  border-radius: 12px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #34C759;
+  animation: cacheIndicatorSlideIn 0.3s ease-out;
+}
+
+.cache-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.cache-text {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@keyframes cacheIndicatorSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
 /* Scrollbar styling - light mode only */
 .summary-points::-webkit-scrollbar {
   width: 4px;

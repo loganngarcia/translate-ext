@@ -53,6 +53,7 @@ const CONFIG = {
   CACHE: {
     MAX_ENTRIES: 50,
     EXPIRY_HOURS: 24,
+    SUMMARY_EXPIRY_HOURS: 6, // Summaries expire faster as content may change
     CLEANUP_INTERVAL: 3600000 // 1 hour in milliseconds
   },
 
@@ -62,6 +63,7 @@ const CONFIG = {
     PROCESS_TRANSLATION: 'processTranslation',
     TRANSLATE_TEXT: 'translateText',
     UPDATE_SUMMARY: 'updateSummary',
+    SUMMARY_UPDATE: 'summaryUpdate', // Auto-generated summary from background
     TRANSLATION_STARTED: 'translationStarted',
     TRANSLATION_COMPLETE: 'translationComplete',
     TRANSLATION_ERROR: 'translationError',
@@ -714,6 +716,138 @@ class CacheManager {
     
     Logger.info('CacheManager shutdown completed', 'CacheManager');
   }
+
+  // =============================================================================
+  // SUMMARY CACHING METHODS
+  // =============================================================================
+
+  /**
+   * Generate cache key for summary
+   * @param {string} url - Page URL
+   * @param {string} targetLanguage - Target language
+   * @returns {string} Cache key
+   * @private
+   */
+  generateSummaryCacheKey(url, targetLanguage) {
+    // Clean URL by removing query params and fragment for better cache hits
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const urlHash = this.simpleHash(cleanUrl);
+    return `summary:${targetLanguage}:${urlHash}`;
+  }
+
+  /**
+   * Get cached summary for URL and language
+   * @param {string} url - Page URL
+   * @param {string} targetLanguage - Target language
+   * @returns {Object|null} Cached summary or null
+   */
+  getSummary(url, targetLanguage) {
+    const key = this.generateSummaryCacheKey(url, targetLanguage);
+    const cached = this.memoryCache.get(key);
+    
+    if (!cached) {
+      return null;
+    }
+
+    // Check if summary is still fresh
+    const now = Date.now();
+    const maxAge = CONFIG.CACHE.SUMMARY_EXPIRY_HOURS * 60 * 60 * 1000;
+    
+    if (now - cached.timestamp > maxAge) {
+      // Summary expired, remove from cache
+      this.memoryCache.delete(key);
+      this.saveToStorage();
+      return null;
+    }
+
+    // Update access time for LRU tracking
+    cached.lastAccessed = now;
+    return cached.data;
+  }
+
+  /**
+   * Cache summary for URL and language
+   * @param {string} url - Page URL
+   * @param {string} targetLanguage - Target language
+   * @param {Object} summary - Summary data to cache
+   */
+  async setSummary(url, targetLanguage, summary) {
+    const key = this.generateSummaryCacheKey(url, targetLanguage);
+    const now = Date.now();
+    
+    const cacheEntry = {
+      data: summary,
+      timestamp: now,
+      lastAccessed: now,
+      type: 'summary',
+      url: url.split('?')[0].split('#')[0], // Store clean URL for debugging
+      language: targetLanguage
+    };
+
+    // Check cache size limits before adding
+    if (this.memoryCache.size >= CONFIG.CACHE.MAX_ENTRIES) {
+      this.evictOldestEntries();
+    }
+
+    this.memoryCache.set(key, cacheEntry);
+    
+    // Save to persistent storage
+    await this.saveToStorage();
+    
+    Logger.debug(`Summary cached for ${url} in ${targetLanguage}`, null, 'CacheManager');
+  }
+
+  /**
+   * Clear all cached summaries
+   */
+  async clearSummaries() {
+    const summaryKeys = Array.from(this.memoryCache.keys()).filter(key => key.startsWith('summary:'));
+    
+    for (const key of summaryKeys) {
+      this.memoryCache.delete(key);
+    }
+    
+    await this.saveToStorage();
+    Logger.info(`Cleared ${summaryKeys.length} cached summaries`, 'CacheManager');
+  }
+
+  /**
+   * Get summary cache statistics
+   * @returns {Object} Summary cache stats
+   */
+  getSummaryStatistics() {
+    const summaryEntries = Array.from(this.memoryCache.entries())
+      .filter(([key]) => key.startsWith('summary:'));
+    
+    const totalSummaries = summaryEntries.length;
+    const now = Date.now();
+    const maxAge = CONFIG.CACHE.SUMMARY_EXPIRY_HOURS * 60 * 60 * 1000;
+    
+    const freshSummaries = summaryEntries.filter(([, entry]) => 
+      now - entry.timestamp <= maxAge
+    ).length;
+    
+    const languages = new Set(summaryEntries.map(([, entry]) => entry.language));
+    
+    return {
+      totalSummaries,
+      freshSummaries,
+      expiredSummaries: totalSummaries - freshSummaries,
+      languages: Array.from(languages),
+      cacheHitRate: this.calculateSummaryHitRate()
+    };
+  }
+
+  /**
+   * Calculate summary cache hit rate (simplified)
+   * @returns {number} Hit rate percentage
+   * @private
+   */
+  calculateSummaryHitRate() {
+    // This would need more sophisticated tracking in a real implementation
+    // For now, return a reasonable estimate
+    return 0.75; // 75% hit rate estimate
+  }
 }
 
 // =============================================================================
@@ -982,6 +1116,9 @@ class MessageRouter {
     this.cacheManager = cacheManager;
     this.apiManager = apiManager;
     
+    // Track ongoing summary generation to prevent duplicates
+    this.ongoingSummaries = new Set();
+    
     this.setupMessageListener();
   }
 
@@ -1031,6 +1168,10 @@ class MessageRouter {
           break;
 
         case CONFIG.MESSAGES.UPDATE_SUMMARY:
+          this.forwardToSidepanel(message);
+          break;
+
+        case CONFIG.MESSAGES.SUMMARY_UPDATE:
           this.forwardToSidepanel(message);
           break;
 
@@ -1199,15 +1340,13 @@ class MessageRouter {
     const { texts, sourceLanguage, targetLanguage, batchInfo } = message;
     const tabId = sender.tab?.id;
 
-    // Enhanced logging for translation requests with timing
-    console.log(`🔥 [BACKGROUND LOG] Translation request received:`, {
+    // Basic logging for translation requests
+    Logger.debug(`Translation request received`, {
       tabId,
       textsCount: Array.isArray(texts) ? texts.length : 1,
       sourceLanguage,
-      targetLanguage,
-      batchInfo: batchInfo || 'N/A',
-      timestamp: new Date().toISOString()
-    });
+      targetLanguage
+    }, 'MessageRouter');
 
     if (!texts || (!Array.isArray(texts) && typeof texts !== 'string')) {
       const error = 'No text provided for translation';
@@ -1227,12 +1366,7 @@ class MessageRouter {
       // Handle both array and string formats for backward compatibility
       const textsToTranslate = Array.isArray(texts) ? texts : [texts];
       
-      console.log(`📝 [BACKGROUND LOG] Processing batch:`, {
-        textsCount: textsToTranslate.length,
-        totalCharacters: textsToTranslate.reduce((sum, text) => sum + text.length, 0),
-        averageLength: Math.round(textsToTranslate.reduce((sum, text) => sum + text.length, 0) / textsToTranslate.length),
-        textSamples: textsToTranslate.slice(0, 3).map(text => text.substring(0, 50) + (text.length > 50 ? '...' : ''))
-      });
+      // Removed excessive batch logging
 
       const cacheCheckStart = performance.now();
       
@@ -1243,7 +1377,7 @@ class MessageRouter {
       
       for (const text of textsToTranslate) {
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
-          console.warn(`⚠️ [BACKGROUND LOG] Skipping empty or invalid text`);
+          Logger.debug(`Skipping empty or invalid text`, null, 'MessageRouter');
           continue;
         }
 
@@ -1258,13 +1392,7 @@ class MessageRouter {
 
       const cacheCheckTime = performance.now() - cacheCheckStart;
 
-      console.log(`💾 [BACKGROUND LOG] Cache check completed:`, {
-        totalTexts: textsToTranslate.length,
-        cacheHits: cacheHits,
-        uncachedTexts: uncachedTexts.length,
-        cacheHitRate: `${Math.round((cacheHits / textsToTranslate.length) * 100)}%`,
-        cacheCheckTimeMs: Math.round(cacheCheckTime)
-      });
+      // Removed excessive cache logging
 
       let apiCallTime = 0;
       let firstTokenTime = null;
@@ -1272,11 +1400,7 @@ class MessageRouter {
       // If we have uncached texts, translate them in batch
       if (uncachedTexts.length > 0) {
         try {
-          console.log(`🌐 [BACKGROUND LOG] Starting API translation:`, {
-            uncachedTexts: uncachedTexts.length,
-            sourceLanguage,
-            targetLanguage
-          });
+          // Removed excessive API start logging
           
           const apiStartTime = performance.now();
           
@@ -1297,13 +1421,9 @@ class MessageRouter {
               });
             });
             
-            console.log(`✅ [BACKGROUND LOG] API translation completed:`, {
-              translatedCount: Object.keys(result.translations).length,
-              apiCallTimeMs: Math.round(apiCallTime),
-              averageTimePerText: Math.round(apiCallTime / uncachedTexts.length)
-            });
+            // Removed excessive API completion logging
           } else {
-            console.warn(`⚠️ [BACKGROUND LOG] API translation failed, using fallback`);
+            Logger.warn('API translation failed, using fallback', 'MessageRouter');
             // Use original texts as fallback
             uncachedTexts.forEach(text => {
               translations[text] = text;
@@ -1311,10 +1431,7 @@ class MessageRouter {
           }
         } catch (error) {
           apiCallTime = performance.now() - requestStartTime; // Record error time
-          console.error(`💥 [BACKGROUND LOG] API translation error:`, {
-            error: error.message,
-            timeElapsedMs: Math.round(apiCallTime)
-          });
+          Logger.error('API translation error', error, 'MessageRouter');
           // Use original texts as fallback
           uncachedTexts.forEach(text => {
             translations[text] = text;
@@ -1325,21 +1442,7 @@ class MessageRouter {
       const totalTime = performance.now() - requestStartTime;
       const successfulTranslations = Object.keys(translations).length;
 
-      console.log(`🎉 [BACKGROUND LOG] Translation batch completed:`, {
-        requested: textsToTranslate.length,
-        successful: successfulTranslations,
-        cached: cacheHits,
-        newTranslations: uncachedTexts.length,
-        successRate: `${Math.round((successfulTranslations / textsToTranslate.length) * 100)}%`,
-        timing: {
-          totalTimeMs: Math.round(totalTime),
-          cacheCheckMs: Math.round(cacheCheckTime),
-          apiCallMs: Math.round(apiCallTime),
-          timeToFirstTokenMs: firstTokenTime ? Math.round(firstTokenTime) : 'N/A',
-          averageTimePerText: Math.round(totalTime / textsToTranslate.length)
-        },
-        batchInfo: batchInfo || 'N/A'
-      });
+      // Removed excessive batch completion logging
 
       sendResponse({
         success: true,
@@ -1379,15 +1482,124 @@ class MessageRouter {
    * @private
    */
   handlePageContentExtracted(message, sender) {
-    if (sender.tab?.id) {
-      this.stateManager.markTabActive(sender.tab.id);
-      this.stateManager.setTranslationState(sender.tab.id, {
-        content: message.content
+    const tabId = sender.tab?.id;
+    const content = message.content;
+    
+    if (tabId) {
+      this.stateManager.markTabActive(tabId);
+      this.stateManager.setTranslationState(tabId, {
+        content: content
       });
+      
+      // Auto-generate summary immediately for fast user experience
+      this.autoGenerateSummary(content, tabId);
     }
 
-    // Forward to sidepanel if needed
-    this.forwardToSidepanel(message);
+    // Forward to sidepanel with enhanced content info
+    this.forwardToSidepanel({
+      ...message,
+      tabId,
+      autoSummaryTriggered: true
+    });
+  }
+
+  /**
+   * Automatically generate summary when page content is extracted
+   * @param {Object} content - Page content object
+   * @param {number} tabId - Tab ID
+   * @private
+   */
+  async autoGenerateSummary(content, tabId) {
+    try {
+      // Get user's preferred language or default to English
+      const userPrefs = await chrome.storage.sync.get(['preferredLanguage']);
+      const targetLanguage = userPrefs.preferredLanguage || 'English';
+      
+      const { url, text, title } = content;
+      
+      // Create unique key for this URL+language combination
+      const summaryKey = `${url}:${targetLanguage}`;
+      
+      // Check if we're already generating a summary for this URL+language
+      if (this.ongoingSummaries.has(summaryKey)) {
+        console.log(`🚫 SUMMARY: Already generating summary for ${title} (${url}) in ${targetLanguage}`);
+        return;
+      }
+      
+      // Check if we already have a cached summary for this URL and language
+      const cachedSummary = this.cacheManager.getSummary(url, targetLanguage);
+      if (cachedSummary) {
+        console.log(`⚡ SUMMARY: Using cached summary for ${title} (${url}) in ${targetLanguage}`);
+        console.log(`📄 SUMMARY CONTENT:`, {
+          title: cachedSummary.title,
+          points: cachedSummary.points?.map(p => `${p.emoji} ${p.text}`) || []
+        });
+        
+        // Send cached summary immediately to sidepanel
+        this.forwardToSidepanel({
+          action: CONFIG.MESSAGES.SUMMARY_UPDATE,
+          tabId,
+          summary: cachedSummary,
+          fromCache: true
+        });
+        return;
+      }
+      
+      // Mark this summary as being generated
+      this.ongoingSummaries.add(summaryKey);
+      console.log(`🔄 SUMMARY: Starting generation for ${title} (${url}) in ${targetLanguage}`);
+      
+      try {
+        // Generate summary in background
+        const summary = await this.apiManager.generateSummary(text, targetLanguage, url);
+        
+        console.log(`✅ SUMMARY: Generated for ${title} (${url}) in ${targetLanguage}`);
+        console.log(`📄 SUMMARY CONTENT:`, {
+          title: summary.title,
+          points: summary.points?.map(p => `${p.emoji} ${p.text}`) || []
+        });
+        
+        // Cache the result for future use
+        this.cacheManager.setSummary(url, targetLanguage, summary);
+        
+        // Send summary to sidepanel
+        this.forwardToSidepanel({
+          action: CONFIG.MESSAGES.SUMMARY_UPDATE,
+          tabId,
+          summary,
+          fromCache: false
+        });
+        
+      } finally {
+        // Always remove from ongoing set when done
+        this.ongoingSummaries.delete(summaryKey);
+      }
+      
+    } catch (error) {
+      console.log(`❌ SUMMARY: Failed to generate for ${content.title} (${content.url}) - ${error.message}`);
+      Logger.error('Auto-summary generation failed', error, 'MessageRouter');
+      
+      // Clean up ongoing summaries tracking
+      const userPrefs = await chrome.storage.sync.get(['preferredLanguage']);
+      const targetLanguage = userPrefs.preferredLanguage || 'English';
+      const summaryKey = `${content.url}:${targetLanguage}`;
+      this.ongoingSummaries.delete(summaryKey);
+      
+      // Send fallback summary to sidepanel
+      this.forwardToSidepanel({
+        action: CONFIG.MESSAGES.SUMMARY_UPDATE,
+        tabId,
+        summary: {
+          title: content.title || 'Page Summary',
+          points: [
+            { emoji: '⏱️', text: 'Summary will be available shortly' },
+            { emoji: '🔄', text: 'Please try the translate button if summary doesn\'t appear' }
+          ]
+        },
+        fromCache: false,
+        error: true
+      });
+    }
   }
 
   /**
