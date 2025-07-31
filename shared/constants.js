@@ -167,318 +167,540 @@ export const LANGUAGES = {
     FALLBACK: 'en-US'
   },
   
-  /** Supported languages for translation - sorted by global speakers (native + second language) */
+  /** Supported languages for translation - sorted by most spoken in USA */
   SUPPORTED: [
-    // Top 10 most spoken languages globally
-    'English / English',           // ~1.5 billion speakers
-    'Mandarin Chinese / 普通话',  // ~1.1 billion speakers  
-    'Hindi / हिन्दी',             // ~600 million speakers
-    'Spanish / Español',           // ~500 million speakers
-    'French / Français',            // ~280 million speakers
-    'Standard Arabic / العربية الفصحى',   // ~250 million speakers
-    'Bengali / বাংলা',           // ~300 million speakers
-    'Russian / Русский',           // ~260 million speakers
-    'Portuguese / Português',        // ~260 million speakers
-    'Indonesian / Bahasa Indonesia',        // ~200 million speakers
+    // Top 20 most spoken languages in USA
+    'English',                    // ~230M speakers
+    'Spanish / Español',          // ~40M speakers
+    'Chinese (Simplified) / 中文(简体)',  // ~2M speakers
+    'Chinese (Traditional) / 中文(繁體)',  // ~1.5M speakers
+    'French / Français',          // ~1.3M speakers
+    'Filipino / Filipino',        // ~1.7M speakers
+    'Vietnamese / Tiếng Việt',    // ~1.5M speakers
+    'Arabic / العربية',          // ~1.2M speakers
+    'Korean / 한국어',            // ~1.1M speakers
+    'Russian / Русский',          // ~900K speakers
+    'German / Deutsch',           // ~900K speakers
+    'Haitian Creole / Kreyòl Ayisyen',  // ~800K speakers
+    'Hindi / हिन्दी',            // ~700K speakers
+    'Portuguese (Brazil) / Português (Brasil)',  // ~500K speakers
+    'Italian / Italiano',         // ~600K speakers
+    'Polish / Polski',            // ~600K speakers
+    'Urdu / اردو',               // ~400K speakers
+    'Japanese / 日本語',          // ~400K speakers
+    'Persian / فارسی',            // ~400K speakers
+    'Gujarati / ગુજરાતી',        // ~400K speakers
     
-    // 11-30 most spoken languages
-    'Urdu / اردو',              // ~170 million speakers
-    'German / Deutsch',            // ~130 million speakers
-    'Japanese / 日本語',          // ~125 million speakers
-    'Swahili / Kiswahili',           // ~200 million speakers (L2)
-    'Marathi / मराठी',           // ~95 million speakers
-    'Telugu / తెలుగు',            // ~95 million speakers
-    'Turkish / Türkçe',           // ~90 million speakers
-    'Tamil / தமிழ்',             // ~80 million speakers
-    'Yue Chinese / 粵語',       // ~85 million speakers
-    'Vietnamese / Tiếng Việt',        // ~85 million speakers
-    'Korean / 한국어',            // ~80 million speakers
-    'Italian / Italiano',           // ~65 million speakers
-    'Thai / ไทย',              // ~60 million speakers
-    'Gujarati / ગુજરાતી',          // ~60 million speakers
-    'Jin Chinese / 晉語',       // ~63 million speakers
-    'Persian / فارسی',           // ~70 million speakers
-    'Malay / Bahasa Melayu',             // ~80 million speakers
-    'Kannada / ಕನ್ನಡ',           // ~45 million speakers
-    'Burmese / မြန်မာဘာသာ',           // ~35 million speakers
-    'Ukrainian / Українська',         // ~40 million speakers
+    // 21-50 most spoken languages in USA
+    'Telugu / తెలుగు',           // ~400K speakers
+    'Bengali / বাংলা',           // ~300K speakers
+    'Thai / ไทย',               // ~250K speakers
+    'Punjabi (Gurmukhi) / ਪੰਜਾਬੀ',  // ~300K speakers
+    'Tamil / தமிழ்',            // ~250K speakers
+    'Armenian / Հայերեն',         // ~250K speakers
+    'Hebrew / עברית',            // ~220K speakers
+    'Khmer / ខ្មែរ',            // ~200K speakers
+    'Laotian / ລາວ',             // ~200K speakers
+    'Dutch / Nederlands',         // ~150K speakers
+    'Greek / Ελληνικά',          // ~150K speakers
+    'Ukrainian / Українська',     // ~120K speakers
+    'Hmong / Hmoob',             // ~200K speakers
+    'Turkish / Türkçe',          // ~120K speakers
+    'Marathi / मराठी',           // ~100K speakers
+    'Kannada / ಕನ್ನಡ',          // ~100K speakers
+    'Indonesian / Bahasa Indonesia',  // ~80K speakers
+    'Somali / Soomaali',         // ~100K speakers
+    'Amharic / አማርኛ',          // ~80K speakers
+    'Malayalam / മലയാളം',        // ~80K speakers
     
-    // 31-60 most spoken languages
-    'Bhojpuri / भोजपुरी',          // ~52 million speakers
-    'Tagalog / Tagalog',           // ~45 million speakers
-    'Yoruba / Yorùbá',            // ~45 million speakers
-    'Odia / ଓଡ଼ିଆ',              // ~38 million speakers
-    'Maithili / मैथिली',          // ~35 million speakers
-    'Uzbek / Oʻzbekcha',             // ~34 million speakers
-    'Sindhi / سنڌي',            // ~30 million speakers
-    'Amharic / አማርኛ',           // ~35 million speakers
-    'Fula / Fulfulde',              // ~40 million speakers
-    'Romanian / Română',          // ~20 million speakers
-    'Oromo / Afaan Oromoo',             // ~37 million speakers
-    'Igbo / Igbo',              // ~27 million speakers
-    'Azerbaijani / Azərbaycan dili',       // ~24 million speakers
-    'Awadhi / अवधी',            // ~40 million speakers
-    'Gan Chinese / 贛語',       // ~31 million speakers
-    'Cebuano / Cebuano',           // ~25 million speakers
-    'Dutch / Nederlands',             // ~24 million speakers
-    'Kurdish / کوردی',           // ~30 million speakers
-    'Serbo-Croatian / Српскохрватски',    // ~21 million speakers
-    'Malagasy / Malagasy',          // ~25 million speakers
+    // 51-100 European and other immigrant languages
+    'Czech / Čeština',           // ~70K speakers
+    'Swedish / Svenska',         // ~70K speakers
+    'Hungarian / Magyar',        // ~70K speakers
+    'Norwegian / Norsk',         // ~60K speakers
+    'Danish / Dansk',            // ~50K speakers
+    'Finnish / Suomi',           // ~50K speakers
+    'Romanian / Română',         // ~60K speakers
+    'Bulgarian / Български',      // ~50K speakers
+    'Slovak / Slovenčina',       // ~40K speakers
+    'Croatian / Hrvatski',       // ~40K speakers
+    'Lithuanian / Lietuvių',     // ~40K speakers
+    'Latvian / Latviešu',        // ~30K speakers
+    'Serbian / Српски',          // ~40K speakers
+    'Bosnian / Bosanski',        // ~30K speakers
+    'Albanian / Shqip',          // ~40K speakers
+    'Estonian / Eesti',          // ~20K speakers
+    'Slovenian / Slovenščina',   // ~20K speakers
+    'Macedonian / Македонски',   // ~25K speakers
+    'Portuguese (Portugal) / Português (Portugal)',  // ~200K speakers
+    'Catalan / Català',          // ~30K speakers
     
-    // 61-90 most spoken languages  
-    'Saraiki / سرائیکی',           // ~26 million speakers
-    'Nepali / नेपाली',            // ~16 million speakers
-    'Sinhala / සිංහල',           // ~17 million speakers
-    'Chittagonian / চাটগাঁইয়া',      // ~16 million speakers
-    'Zhuang / Vahcuengh',            // ~18 million speakers
-    'Khmer / ខ្មែរ',             // ~16 million speakers
-    'Turkmen / Türkmen dili',           // ~12 million speakers
-    'Assamese / অসমীয়া',          // ~15 million speakers
-    'Madurese / Basa Madhura',          // ~15 million speakers
-    'Somali / Soomaali',            // ~16 million speakers
-    'Marwari / मारवाड़ी',           // ~13 million speakers
-    'Magahi / मगही',            // ~13 million speakers
-    'Haryanvi / हरियाणवी',          // ~13 million speakers
-    'Hungarian / Magyar',         // ~13 million speakers
-    'Chewa / Chichewa',             // ~12 million speakers
-    'Greek / Ελληνικά',             // ~13 million speakers
-    'Chhatisgarhi / छत्तीसगढ़ी',      // ~12 million speakers
-    'Deccan / دکنی',            // ~13 million speakers
-    'Akan / Akan',              // ~11 million speakers
-    'Kazakh / Қазақша',            // ~12 million speakers
+    // African languages
+    'Yoruba / Yorùbá',           // ~60K speakers
+    'Igbo / Igbo',               // ~50K speakers
+    'Swahili / Kiswahili',       // ~40K speakers
+    'Oromo / Afaan Oromoo',      // ~30K speakers
+    'Tigrinya / ትግርኛ',         // ~40K speakers
+    'Wolof / Wolof',             // ~20K speakers
+    'Twi / Twi',                 // ~30K speakers
+    'Bambara / Bamanankan',      // ~15K speakers
+    'Fulani / Fulfulde',         // ~20K speakers
+    'Hausa / Harshen Hausa',     // ~25K speakers
+    'Lingala / Lingála',         // ~15K speakers
+    'Kinyarwanda / Ikinyarwanda', // ~15K speakers
+    'Luganda / Luganda',         // ~10K speakers
+    'Shona / chiShona',          // ~15K speakers
+    'Zulu / isiZulu',            // ~10K speakers
+    'Xhosa / isiXhosa',          // ~8K speakers
     
-    // 91-120 most spoken languages
-    'Northern Min / 閩北語',      // ~10 million speakers
-    'Sylheti / সিলেটি',           // ~11 million speakers
-    'Zulu / isiZulu',              // ~12 million speakers
-    'Czech / Čeština',             // ~10 million speakers
-    'Kinyarwanda / Ikinyarwanda',       // ~12 million speakers
-    'Dhundhari / ढूंढाड़ी',         // ~11 million speakers
-    'Haitian Creole / Kreyòl Ayisyen',    // ~12 million speakers
-    'Eastern Min / 閩東語',       // ~10 million speakers
-    'Ilocano / Ilokano',           // ~10 million speakers
-    'Quechua / Runa Simi',           // ~8 million speakers
-    'Kirundi / Ikirundi',           // ~9 million speakers
-    'Swedish / Svenska',           // ~10 million speakers
-    'Hmong / Hmoob',             // ~9 million speakers
-    'Shona / chiShona',             // ~11 million speakers
-    'Uyghur / ئۇيغۇرچە',            // ~10 million speakers
-    'Hiligaynon / Ilonggo',        // ~9 million speakers
-    'Mossi / Mooré',             // ~8 million speakers
-    'Xhosa / isiXhosa',             // ~8 million speakers
-    'Belarusian / Беларуская',        // ~5 million speakers
-    'Balochi / بلۏچی',           // ~8 million speakers
+    // Additional Asian languages
+    'Nepali / नेपाली',           // ~40K speakers
+    'Sinhala / සිංහල',          // ~25K speakers
+    'Burmese / မြန်မာဘာသာ',      // ~30K speakers
+    'Mongolian / Монгол хэл',    // ~15K speakers
+    'Tibetan / བོད་ཡིག',        // ~20K speakers
+    'Uyghur / ئۇيغۇرچە',         // ~15K speakers
+    'Kazakh / Қазақша',          // ~12K speakers
+    'Uzbek / Oʻzbekcha',         // ~20K speakers
+    'Kyrgyz / Кыргызча',         // ~8K speakers
+    'Tajik / Тоҷикӣ',            // ~10K speakers
+    'Turkmen / Türkmen dili',    // ~8K speakers
+    'Pashto / پښتو',             // ~25K speakers
+    'Dari / دری',                // ~20K speakers
+    'Sindhi / سنڌي',            // ~15K speakers
     
-    // Additional European and other languages
-    'Polish / Polski',            // ~45 million speakers
-    'Afrikaans / Afrikaans',         // ~7 million speakers
-    'Albanian / Shqip',          // ~6 million speakers
-    'Armenian / Հայերեն',          // ~7 million speakers
-    'Basque / Euskera',            // ~1 million speakers
-    'Bosnian / Bosanski',           // ~3 million speakers
-    'Bulgarian / Български',         // ~8 million speakers
-    'Catalan / Català',           // ~10 million speakers
-    'Croatian / Hrvatski',          // ~5 million speakers
-    'Danish / Dansk',            // ~6 million speakers
-    'Estonian / Eesti',          // ~1 million speakers
-    'Finnish / Suomi',           // ~5 million speakers
-    'Galician / Galego',          // ~2.4 million speakers
-    'Georgian / ქართული',          // ~4 million speakers
-    'Hebrew / עברית',            // ~9 million speakers
-    'Icelandic / Íslenska',         // ~300k speakers
-    'Irish / Gaeilge',             // ~1.7 million speakers
-    'Latvian / Latviešu',           // ~1.3 million speakers
-    'Lithuanian / Lietuvių',        // ~3 million speakers
-    'Luxembourgish / Lëtzebuergesch',     // ~400k speakers
-    'Macedonian / Македонски',        // ~2 million speakers
-    'Maltese / Malti',           // ~520k speakers
-    'Montenegrin / Crnogorski',       // ~300k speakers
-    'Norwegian / Norsk',         // ~5 million speakers
-    'Scottish Gaelic / Gàidhlig',   // ~57k speakers
-    'Serbian / Српски',           // ~8 million speakers
-    'Slovak / Slovenčina',           // ~5 million speakers
-    'Slovenian / Slovenščina',         // ~2.5 million speakers
-    'Welsh / Cymraeg',             // ~580k speakers
+    // Pacific and Oceanic languages
+    'Samoan / Gagana Sāmoa',     // ~50K speakers
+    'Tongan / Lea fakatonga',    // ~25K speakers
+    'Fijian / Bau Fijian',       // ~15K speakers
+    'Hawaiian / ʻŌlelo Hawaiʻi', // ~24K speakers
+    'Marshallese / Kajin M̧ajeļ', // ~12K speakers
+    'Chamorro / Fino\' Chamoru', // ~15K speakers
+    'Chuukese / Chuukese',       // ~8K speakers
     
-    // Additional Asian and African languages
-    'Bambara / Bamanankan',           // ~15 million speakers
-    'Ewe / Èʋegbe',               // ~6 million speakers
-    'Hausa / Harshen Hausa',             // ~70 million speakers
-    'Lingala / Lingála',           // ~15 million speakers
-    'Luganda / Luganda',           // ~5.6 million speakers
-    'Twi / Twi',               // ~17 million speakers
-    'Wolof / Wolof',             // ~5.2 million speakers
-    'Tigrinya / ትግርኛ',          // ~9 million speakers
-    'Kongo / Kikongo',             // ~7 million speakers
-    'Luo / Dholuo',               // ~4.2 million speakers
-    'Bemba / Ichibemba',             // ~4 million speakers
-    'Tonga / chiTonga',             // ~1.8 million speakers
-    'Ndebele / isiNdebele',           // ~2.1 million speakers
-    'Venda / Tshivenḓa',             // ~1.2 million speakers
-    'Tsonga / Xitsonga',            // ~4.4 million speakers
-    'Swazi / siSwati',             // ~2.3 million speakers
-    'Sotho / Sesotho',             // ~5.6 million speakers
-    'Pedi / Sepedi',              // ~4.7 million speakers
-    'Lao / ລາວ',               // ~30 million speakers
-    'Mongolian / Монгол хэл',         // ~5.7 million speakers
-    'Tibetan / བོད་ཡིག',           // ~6 million speakers
-    'Dzongkha / རྫོང་ཁ',          // ~630k speakers
-    'Filipino / Filipino',          // ~45 million speakers
+    // Native American languages
+    'Navajo / Diné bizaad',      // ~170K speakers
+    'Cherokee / ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ',      // ~2K speakers
+    'Yupik / Yup\'ik',           // ~10K speakers
+    'Inuktut (Syllabics) / ᐃᓄᒃᑎᑐᑦ', // ~8K speakers
+    'Inuktut (Latin) / Inuktitut', // ~8K speakers
     
-    // Classical and constructed languages
-    'Latin / Latina',             // Classical language
-    'Esperanto / Esperanto',         // ~2 million speakers
-    'Sanskrit / संस्कृतम्'           // Classical language
+    // Celtic languages
+    'Irish / Gaeilge',           // ~25K speakers
+    'Welsh / Cymraeg',           // ~15K speakers
+    'Scots Gaelic / Gàidhlig',   // ~3K speakers
+    'Manx / Gaelg',              // ~2K speakers
+    'Breton / Brezhoneg',        // ~3K speakers
+    
+    // Other European languages
+    'Basque / Euskera',          // ~8K speakers
+    'Maltese / Malti',           // ~5K speakers
+    'Icelandic / Íslenska',      // ~4K speakers
+    'Faroese / Føroyskt',        // ~2K speakers
+    'Luxembourgish / Lëtzebuergesch', // ~3K speakers
+    'Frisian / Frysk',           // ~2K speakers
+    'Corsican / Corsu',          // ~5K speakers
+    'Sardinian / Sardu',         // ~3K speakers
+    'Galician / Galego',         // ~8K speakers
+    
+    // Additional languages from the user's list
+    'Abkhaz / Аҧсуа бызшәа',     // ~2K speakers
+    'Acehnese / Bahsa Acèh',     // ~3K speakers
+    'Acholi / Luo',              // ~5K speakers
+    'Afar / Afaraf',             // ~1K speakers
+    'Afrikaans / Afrikaans',     // ~15K speakers
+    'Alur / Alur',               // ~2K speakers
+    'Assamese / অসমীয়া',        // ~10K speakers
+    'Avar / Авар мацӏ',          // ~2K speakers
+    'Awadhi / अवधी',             // ~5K speakers
+    'Aymara / Aymar aru',        // ~3K speakers
+    'Azerbaijani / Azərbaycan dili', // ~15K speakers
+    'Balinese / Basa Bali',      // ~3K speakers
+    'Baluchi / بلۏچی',           // ~8K speakers
+    'Baoulé / Baoulé',           // ~2K speakers
+    'Bashkir / Башҡорт теле',    // ~3K speakers
+    'Batak Karo / Cakap Karo',   // ~2K speakers
+    'Batak Simalungun / Hata Simalungun', // ~1K speakers
+    'Batak Toba / Hata Batak',   // ~2K speakers
+    'Belarusian / Беларуская',   // ~8K speakers
+    'Bemba / Ichibemba',         // ~3K speakers
+    'Betawi / Betawi',           // ~2K speakers
+    'Bhojpuri / भोजपुरी',        // ~8K speakers
+    'Bikol / Bikol',             // ~5K speakers
+    'Cantonese / 粵語',           // ~500K speakers
+    'Cebuano / Cebuano',         // ~80K speakers
+    'Chechen / Нохчийн мотт',    // ~5K speakers
+    'Chichewa / Chichewa',       // ~8K speakers
+    'Chuvash / Чӑваш чӗлхи',     // ~2K speakers
+    'Crimean Tatar (Cyrillic) / Къырымтатар тили', // ~3K speakers
+    'Crimean Tatar (Latin) / Qırımtatar tili', // ~3K speakers
+    'Dhivehi / ދިވެހި',          // ~2K speakers
+    'Dinka / Thuɔŋjäŋ',          // ~8K speakers
+    'Dogri / डोगरी',             // ~3K speakers
+    'Dombe / Dombe',             // ~1K speakers
+    'Dyula / Julakan',           // ~3K speakers
+    'Dzongkha / རྫོང་ཁ',         // ~2K speakers
+    'Esperanto / Esperanto',     // ~5K speakers
+    'Ewe / Èʋegbe',              // ~5K speakers
+    'Fon / Fongbe',              // ~3K speakers
+    'French (Canada) / Français (Canada)', // ~100K speakers
+    'Friulian / Furlan',         // ~2K speakers
+    'Ga / Gã',                   // ~2K speakers
+    'Georgian / ქართული',        // ~8K speakers
+    'Guarani / Avañe\'ẽ',        // ~5K speakers
+    'Hakha Chin / Laiholh',      // ~15K speakers
+    'Hiligaynon / Ilonggo',      // ~20K speakers
+    'Hunsrik / Hunsrik',         // ~3K speakers
+    'Iban / Jaku Iban',          // ~2K speakers
+    'Ilocano / Ilokano',         // ~150K speakers
+    'Jamaican Patois / Patwa',   // ~80K speakers
+    'Javanese / Basa Jawa',      // ~10K speakers
+    'Jingpo / Jinghpaw',         // ~2K speakers
+    'Kalaallisut / Kalaallisut', // ~1K speakers
+    'Kanuri / Kanuri',           // ~3K speakers
+    'Kapampangan / Kapampangan', // ~25K speakers
+    'Khasi / Ka Ktien Khasi',    // ~2K speakers
+    'Kiga / Rukiga',             // ~2K speakers
+    'Kikongo / Kikongo',         // ~8K speakers
+    'Kituba / Kituba',           // ~3K speakers
+    'Kokborok / Kokborok',       // ~2K speakers
+    'Komi / Коми кыв',           // ~1K speakers
+    'Konkani / कोंकणी',          // ~5K speakers
+    'Krio / Krio',               // ~3K speakers
+    'Kurdish (Kurmanji) / Kurmancî', // ~15K speakers
+    'Kurdish (Sorani) / سۆرانی', // ~10K speakers
+    'Lao / ລາວ',                 // ~200K speakers (same as Laotian)
+    'Latgalian / Latgalīšu',     // ~1K speakers
+    'Latin / Latina',            // ~5K speakers
+    'Ligurian / Ligure',         // ~2K speakers
+    'Limburgish / Limburgs',     // ~2K speakers
+    'Lombard / Lombard',         // ~3K speakers
+    'Luo / Dholuo',              // ~5K speakers
+    'Madurese / Basa Madhura',   // ~3K speakers
+    'Maithili / मैथिली',         // ~8K speakers
+    'Makassar / Basa Mangkasarak', // ~2K speakers
+    'Malagasy / Malagasy',       // ~5K speakers
+    'Malay / Bahasa Melayu',     // ~15K speakers
+    'Malay (Jawi) / بهاس ملايو',  // ~8K speakers
+    'Mam / Mam',                 // ~8K speakers
+    'Maori / Te Reo Māori',      // ~3K speakers
+    'Marwadi / मारवाड़ी',         // ~15K speakers
+    'Mauritian Creole / Kreol Morisien', // ~5K speakers
+    'Meadow Mari / Олык марий йылме', // ~1K speakers
+    'Meiteilon (Manipuri) / মেইতেই লোন্', // ~3K speakers
+    'Minang / Baso Minangkabau', // ~2K speakers
+    'Mizo / Mizo ṭawng',         // ~3K speakers
+    'Nahuatl (Eastern Huasteca) / Nāhuatl', // ~2K speakers
+    'Ndau / ChiNdau',            // ~2K speakers
+    'Ndebele (South) / isiNdebele', // ~3K speakers
+    'Nepalbhasa (Newari) / नेपाल भाषा', // ~3K speakers
+    'NKo / ߒߞߏ',                  // ~2K speakers
+    'Nuer / Thok Naath',         // ~8K speakers
+    'Occitan / Occitan',         // ~2K speakers
+    'Odia (Oriya) / ଓଡ଼ିଆ',      // ~15K speakers
+    'Ossetian / Ирон æвзаг',     // ~3K speakers
+    'Pangasinan / Salitan Pangasinan', // ~8K speakers
+    'Papiamento / Papiamentu',   // ~5K speakers
+    'Punjabi (Shahmukhi) / پنجابی', // ~50K speakers
+    'Quechua / Runa Simi',       // ~8K speakers
+    'Qʼeqchiʼ / Qʼeqchiʼ',       // ~5K speakers
+    'Romani / Romani čhib',      // ~8K speakers
+    'Rundi / Ikirundi',          // ~5K speakers
+    'Sami (North) / Davvisámegiella', // ~2K speakers
+    'Sango / Sängö',             // ~3K speakers
+    'Sanskrit / संस्कृतम्',       // ~3K speakers
+    'Santali (Latin) / Santali', // ~2K speakers
+    'Santali (Ol Chiki) / ᱥᱟᱱᱛᱟᱲᱤ', // ~2K speakers
+    'Sepedi / Sepedi',           // ~5K speakers
+    'Sesotho / Sesotho',         // ~8K speakers
+    'Seychellois Creole / Seselwa', // ~2K speakers
+    'Shan / လိၵ်ႈတႆး',           // ~3K speakers
+    'Sicilian / Sicilianu',      // ~5K speakers
+    'Silesian / Ślōnsko godka',  // ~3K speakers
+    'Sundanese / Basa Sunda',    // ~5K speakers
+    'Susu / Sosoxui',            // ~2K speakers
+    'Swati / siSwati',           // ~3K speakers
+    'Tahitian / Reo Tahiti',     // ~2K speakers
+    'Tamazight / ⵜⴰⵎⴰⵣⵉⵖⵜ',      // ~3K speakers
+    'Tamazight (Tifinagh) / ⵜⴰⵎⴰⵣⵉⵖⵜ', // ~3K speakers
+    'Tatar / Татар теле',        // ~8K speakers
+    'Tetum / Tetun',             // ~3K speakers
+    'Tiv / Tiv',                 // ~3K speakers
+    'Tok Pisin / Tok Pisin',     // ~2K speakers
+    'Tshiluba / Tshiluba',       // ~5K speakers
+    'Tsonga / Xitsonga',         // ~3K speakers
+    'Tswana / Setswana',         // ~5K speakers
+    'Tulu / ತುಳು',               // ~3K speakers
+    'Tumbuka / Chitumbuka',      // ~2K speakers
+    'Tuvan / Тыва дыл',          // ~1K speakers
+    'Udmurt / Удмурт кыл',       // ~1K speakers
+    'Venda / Tshivenḓa',         // ~3K speakers
+    'Venetian / Vèneto',         // ~5K speakers
+    'Waray / Winaray',           // ~15K speakers
+    'Yakut / Саха тыла',         // ~2K speakers
+    'Yiddish / יידיש',           // ~50K speakers
+    'Yucatec Maya / Maaya T\'aan', // ~3K speakers
+    'Zapotec / Diidxazá',        // ~8K speakers
   ],
   
   /** Language code mappings for TTS and API calls */
   CODES: {
-    // Major world languages
-    'English / English': 'en-US',
-    'Mandarin Chinese / 普通话': 'zh-CN',
-    'Hindi / हिन्दी': 'hi-IN',
-    'Spanish / Español': 'es-ES',
+    // Top languages in USA
+    'English': 'en-US',
+    'Spanish / Español': 'es-US',
+    'Chinese (Simplified) / 中文(简体)': 'zh-CN',
+    'Chinese (Traditional) / 中文(繁體)': 'zh-TW',
     'French / Français': 'fr-FR',
-    'Standard Arabic / العربية الفصحى': 'ar-SA',
-    'Bengali / বাংলা': 'bn-BD',
-    'Russian / Русский': 'ru-RU',
-    'Portuguese / Português': 'pt-PT',
-    'Indonesian / Bahasa Indonesia': 'id-ID',
-    'Urdu / اردو': 'ur-PK',
-    'German / Deutsch': 'de-DE',
-    'Japanese / 日本語': 'ja-JP',
-    'Swahili / Kiswahili': 'sw-KE',
-    'Marathi / मराठी': 'mr-IN',
-    'Telugu / తెలుగు': 'te-IN',
-    'Turkish / Türkçe': 'tr-TR',
-    'Tamil / தமிழ்': 'ta-IN',
-    'Yue Chinese / 粵語': 'zh-HK',
+    'Filipino / Filipino': 'fil-PH',
     'Vietnamese / Tiếng Việt': 'vi-VN',
+    'Arabic / العربية': 'ar-SA',
     'Korean / 한국어': 'ko-KR',
-    'Italian / Italiano': 'it-IT',
-    'Thai / ไทย': 'th-TH',
-    'Gujarati / ગુજરાતી': 'gu-IN',
-    'Jin Chinese / 晉語': 'zh-CN',
-    'Persian / فارسی': 'fa-IR',
-    'Malay / Bahasa Melayu': 'ms-MY',
-    'Kannada / ಕನ್ನಡ': 'kn-IN',
-    'Burmese / မြန်မာဘာသာ': 'my-MM',
-    'Ukrainian / Українська': 'uk-UA',
-    'Bhojpuri / भोजपुरी': 'bho-IN',
-    'Tagalog / Tagalog': 'tl-PH',
-    'Yoruba / Yorùbá': 'yo-NG',
-    'Odia / ଓଡ଼ିଆ': 'or-IN',
-    'Maithili / मैथिली': 'mai-IN',
-    'Uzbek / Oʻzbekcha': 'uz-UZ',
-    'Sindhi / سنڌي': 'sd-PK',
-    'Amharic / አማርኛ': 'am-ET',
-    'Fula / Fulfulde': 'ff-SN',
-    'Romanian / Română': 'ro-RO',
-    'Oromo / Afaan Oromoo': 'om-ET',
-    'Igbo / Igbo': 'ig-NG',
-    'Azerbaijani / Azərbaycan dili': 'az-AZ',
-    'Awadhi / अवधी': 'awa-IN',
-    'Gan Chinese / 贛語': 'zh-CN',
-    'Cebuano / Cebuano': 'ceb-PH',
-    'Dutch / Nederlands': 'nl-NL',
-    'Kurdish / کوردی': 'ku-TR',
-    'Serbo-Croatian / Српскохрватски': 'sh-RS',
-    'Malagasy / Malagasy': 'mg-MG',
-    'Saraiki / سرائیکی': 'skr-PK',
-    'Nepali / नेपाली': 'ne-NP',
-    'Sinhala / සිංහල': 'si-LK',
-    'Chittagonian / চাটগাঁইয়া': 'ctg-BD',
-    'Zhuang / Vahcuengh': 'za-CN',
-    'Khmer / ខ្មែរ': 'km-KH',
-    'Turkmen / Türkmen dili': 'tk-TM',
-    'Assamese / অসমীয়া': 'as-IN',
-    'Madurese / Basa Madhura': 'mad-ID',
-    'Somali / Soomaali': 'so-SO',
-    'Marwari / मारवाड़ी': 'mwr-IN',
-    'Magahi / मगही': 'mag-IN',
-    'Haryanvi / हरियाणवी': 'bgc-IN',
-    'Hungarian / Magyar': 'hu-HU',
-    'Chewa / Chichewa': 'ny-MW',
-    'Greek / Ελληνικά': 'el-GR',
-    'Chhatisgarhi / छत्तीसगढ़ी': 'hne-IN',
-    'Deccan / دکنی': 'dcc-IN',
-    'Akan / Akan': 'ak-GH',
-    'Kazakh / Қазақша': 'kk-KZ',
-    'Northern Min / 閩北語': 'mnp-CN',
-    'Sylheti / সিলেটি': 'syl-BD',
-    'Zulu / isiZulu': 'zu-ZA',
-    'Czech / Čeština': 'cs-CZ',
-    'Kinyarwanda / Ikinyarwanda': 'rw-RW',
-    'Dhundhari / ढूंढाड़ी': 'dhd-IN',
+    'Russian / Русский': 'ru-RU',
+    'German / Deutsch': 'de-DE',
     'Haitian Creole / Kreyòl Ayisyen': 'ht-HT',
-    'Eastern Min / 閩東語': 'cdo-CN',
-    'Ilocano / Ilokano': 'ilo-PH',
-    'Quechua / Runa Simi': 'qu-PE',
-    'Kirundi / Ikirundi': 'rn-BI',
-    'Swedish / Svenska': 'sv-SE',
-    'Hmong / Hmoob': 'hmn-CN',
-    'Shona / chiShona': 'sn-ZW',
-    'Uyghur / ئۇيغۇرچە': 'ug-CN',
-    'Hiligaynon / Ilonggo': 'hil-PH',
-    'Mossi / Mooré': 'mos-BF',
-    'Xhosa / isiXhosa': 'xh-ZA',
-    'Belarusian / Беларуская': 'be-BY',
-    'Balochi / بلۏچی': 'bal-PK',
+    'Hindi / हिन्दी': 'hi-IN',
+    'Portuguese (Brazil) / Português (Brasil)': 'pt-BR',
+    'Italian / Italiano': 'it-IT',
     'Polish / Polski': 'pl-PL',
-    'Afrikaans / Afrikaans': 'af-ZA',
-    'Albanian / Shqip': 'sq-AL',
+    'Urdu / اردو': 'ur-PK',
+    'Japanese / 日本語': 'ja-JP',
+    'Persian / فارسی': 'fa-IR',
+    'Gujarati / ગુજરાતી': 'gu-IN',
+    'Telugu / తెలుగు': 'te-IN',
+    'Bengali / বাংলা': 'bn-BD',
+    'Thai / ไทย': 'th-TH',
+    'Punjabi (Gurmukhi) / ਪੰਜਾਬੀ': 'pa-IN',
+    'Tamil / தமிழ்': 'ta-IN',
     'Armenian / Հայերեն': 'hy-AM',
-    'Basque / Euskera': 'eu-ES',
-    'Bosnian / Bosanski': 'bs-BA',
-    'Bulgarian / Български': 'bg-BG',
-    'Catalan / Català': 'ca-ES',
-    'Croatian / Hrvatski': 'hr-HR',
-    'Danish / Dansk': 'da-DK',
-    'Estonian / Eesti': 'et-EE',
-    'Finnish / Suomi': 'fi-FI',
-    'Galician / Galego': 'gl-ES',
-    'Georgian / ქართული': 'ka-GE',
     'Hebrew / עברית': 'he-IL',
-    'Icelandic / Íslenska': 'is-IS',
-    'Irish / Gaeilge': 'ga-IE',
-    'Latvian / Latviešu': 'lv-LV',
-    'Lithuanian / Lietuvių': 'lt-LT',
-    'Luxembourgish / Lëtzebuergesch': 'lb-LU',
-    'Macedonian / Македонски': 'mk-MK',
-    'Maltese / Malti': 'mt-MT',
-    'Montenegrin / Crnogorski': 'cnr-ME',
+    'Khmer / ខ្មែរ': 'km-KH',
+    'Laotian / ລາວ': 'lo-LA',
+    'Dutch / Nederlands': 'nl-NL',
+    'Greek / Ελληνικά': 'el-GR',
+    'Ukrainian / Українська': 'uk-UA',
+    'Hmong / Hmoob': 'hmn-CN',
+    'Turkish / Türkçe': 'tr-TR',
+    'Marathi / मराठी': 'mr-IN',
+    'Kannada / ಕನ್ನಡ': 'kn-IN',
+    'Indonesian / Bahasa Indonesia': 'id-ID',
+    'Somali / Soomaali': 'so-SO',
+    'Amharic / አማርኛ': 'am-ET',
+    'Malayalam / മലയാളം': 'ml-IN',
+    'Czech / Čeština': 'cs-CZ',
+    'Swedish / Svenska': 'sv-SE',
+    'Hungarian / Magyar': 'hu-HU',
     'Norwegian / Norsk': 'no-NO',
-    'Scottish Gaelic / Gàidhlig': 'gd-GB',
-    'Serbian / Српски': 'sr-RS',
+    'Danish / Dansk': 'da-DK',
+    'Finnish / Suomi': 'fi-FI',
+    'Romanian / Română': 'ro-RO',
+    'Bulgarian / Български': 'bg-BG',
     'Slovak / Slovenčina': 'sk-SK',
+    'Croatian / Hrvatski': 'hr-HR',
+    'Lithuanian / Lietuvių': 'lt-LT',
+    'Latvian / Latviešu': 'lv-LV',
+    'Serbian / Српски': 'sr-RS',
+    'Bosnian / Bosanski': 'bs-BA',
+    'Albanian / Shqip': 'sq-AL',
+    'Estonian / Eesti': 'et-EE',
     'Slovenian / Slovenščina': 'sl-SI',
-    'Welsh / Cymraeg': 'cy-GB',
+    'Macedonian / Македонски': 'mk-MK',
+    'Portuguese (Portugal) / Português (Portugal)': 'pt-PT',
+    'Catalan / Català': 'ca-ES',
+    'Yoruba / Yorùbá': 'yo-NG',
+    'Igbo / Igbo': 'ig-NG',
+    'Swahili / Kiswahili': 'sw-KE',
+    'Oromo / Afaan Oromoo': 'om-ET',
+    'Tigrinya / ትግርኛ': 'ti-ER',
+    'Wolof / Wolof': 'wo-SN',
+    'Twi / Twi': 'tw-GH',
     'Bambara / Bamanankan': 'bm-ML',
-    'Ewe / Èʋegbe': 'ee-GH',
+    'Fulani / Fulfulde': 'ff-SN',
     'Hausa / Harshen Hausa': 'ha-NG',
     'Lingala / Lingála': 'ln-CD',
+    'Kinyarwanda / Ikinyarwanda': 'rw-RW',
     'Luganda / Luganda': 'lg-UG',
-    'Twi / Twi': 'tw-GH',
-    'Wolof / Wolof': 'wo-SN',
-    'Tigrinya / ትግርኛ': 'ti-ER',
-    'Kongo / Kikongo': 'kg-CD',
-    'Luo / Dholuo': 'luo-KE',
-    'Bemba / Ichibemba': 'bem-ZM',
-    'Tonga / chiTonga': 'to-TO',
-    'Ndebele / isiNdebele': 'nd-ZW',
-    'Venda / Tshivenḓa': 've-ZA',
-    'Tsonga / Xitsonga': 'ts-ZA',
-    'Swazi / siSwati': 'ss-SZ',
-    'Sotho / Sesotho': 'st-ZA',
-    'Pedi / Sepedi': 'nso-ZA',
-    'Lao / ລາວ': 'lo-LA',
+    'Shona / chiShona': 'sn-ZW',
+    'Zulu / isiZulu': 'zu-ZA',
+    'Xhosa / isiXhosa': 'xh-ZA',
+    'Nepali / नेपाली': 'ne-NP',
+    'Sinhala / සිංහල': 'si-LK',
+    'Burmese / မြန်မာဘာသာ': 'my-MM',
     'Mongolian / Монгол хэл': 'mn-MN',
     'Tibetan / བོད་ཡིག': 'bo-CN',
+    'Uyghur / ئۇيغۇرچە': 'ug-CN',
+    'Kazakh / Қазақша': 'kk-KZ',
+    'Uzbek / Oʻzbekcha': 'uz-UZ',
+    'Kyrgyz / Кыргызча': 'ky-KG',
+    'Tajik / Тоҷикӣ': 'tg-TJ',
+    'Turkmen / Türkmen dili': 'tk-TM',
+    'Pashto / پښتو': 'ps-AF',
+    'Dari / دری': 'prs-AF',
+    'Sindhi / سنڌي': 'sd-PK',
+    'Samoan / Gagana Sāmoa': 'sm-WS',
+    'Tongan / Lea fakatonga': 'to-TO',
+    'Fijian / Bau Fijian': 'fj-FJ',
+    'Hawaiian / ʻŌlelo Hawaiʻi': 'haw-US',
+    'Marshallese / Kajin M̧ajeļ': 'mh-MH',
+    'Chamorro / Fino\' Chamoru': 'ch-GU',
+    'Chuukese / Chuukese': 'chk-FM',
+    'Navajo / Diné bizaad': 'nv-US',
+    'Cherokee / ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ': 'chr-US',
+    'Yupik / Yup\'ik': 'esu-US',
+    'Inuktut (Syllabics) / ᐃᓄᒃᑎᑐᑦ': 'iu-CA',
+    'Inuktut (Latin) / Inuktitut': 'iu-Latn-CA',
+    'Irish / Gaeilge': 'ga-IE',
+    'Welsh / Cymraeg': 'cy-GB',
+    'Scots Gaelic / Gàidhlig': 'gd-GB',
+    'Manx / Gaelg': 'gv-IM',
+    'Breton / Brezhoneg': 'br-FR',
+    'Basque / Euskera': 'eu-ES',
+    'Maltese / Malti': 'mt-MT',
+    'Icelandic / Íslenska': 'is-IS',
+    'Faroese / Føroyskt': 'fo-FO',
+    'Luxembourgish / Lëtzebuergesch': 'lb-LU',
+    'Frisian / Frysk': 'fy-NL',
+    'Corsican / Corsu': 'co-FR',
+    'Sardinian / Sardu': 'sc-IT',
+    'Galician / Galego': 'gl-ES',
+    
+    // Additional languages from user's list
+    'Abkhaz / Аҧсуа бызшәа': 'ab-GE',
+    'Acehnese / Bahsa Acèh': 'ace-ID',
+    'Acholi / Luo': 'ach-UG',
+    'Afar / Afaraf': 'aa-ET',
+    'Afrikaans / Afrikaans': 'af-ZA',
+    'Alur / Alur': 'alz-UG',
+    'Assamese / অসমীয়া': 'as-IN',
+    'Avar / Авар мацӏ': 'av-RU',
+    'Awadhi / अवधी': 'awa-IN',
+    'Aymara / Aymar aru': 'ay-BO',
+    'Azerbaijani / Azərbaycan dili': 'az-AZ',
+    'Balinese / Basa Bali': 'ban-ID',
+    'Baluchi / بلۏچی': 'bal-PK',
+    'Baoulé / Baoulé': 'bci-CI',
+    'Bashkir / Башҡорт теле': 'ba-RU',
+    'Batak Karo / Cakap Karo': 'btx-ID',
+    'Batak Simalungun / Hata Simalungun': 'bts-ID',
+    'Batak Toba / Hata Batak': 'bbc-ID',
+    'Belarusian / Беларуская': 'be-BY',
+    'Bemba / Ichibemba': 'bem-ZM',
+    'Betawi / Betawi': 'bew-ID',
+    'Bhojpuri / भोजपुरी': 'bho-IN',
+    'Bikol / Bikol': 'bik-PH',
+    'Cantonese / 粵語': 'yue-HK',
+    'Cebuano / Cebuano': 'ceb-PH',
+    'Chechen / Нохчийн мотт': 'ce-RU',
+    'Chichewa / Chichewa': 'ny-MW',
+    'Chuvash / Чӑваш чӗлхи': 'cv-RU',
+    'Crimean Tatar (Cyrillic) / Къырымтатар тили': 'crh-UA',
+    'Crimean Tatar (Latin) / Qırımtatar tili': 'crh-Latn-UA',
+    'Dhivehi / ދިވެހި': 'dv-MV',
+    'Dinka / Thuɔŋjäŋ': 'din-SS',
+    'Dogri / डोगरी': 'doi-IN',
+    'Dombe / Dombe': 'dov-MZ',
+    'Dyula / Julakan': 'dyu-BF',
     'Dzongkha / རྫོང་ཁ': 'dz-BT',
-    'Filipino / Filipino': 'fil-PH',
-    'Latin / Latina': 'la-VA',
     'Esperanto / Esperanto': 'eo-001',
-    'Sanskrit / संस्कृतम्': 'sa-IN'
+    'Ewe / Èʋegbe': 'ee-GH',
+    'Fon / Fongbe': 'fon-BJ',
+    'French (Canada) / Français (Canada)': 'fr-CA',
+    'Friulian / Furlan': 'fur-IT',
+    'Ga / Gã': 'gaa-GH',
+    'Georgian / ქართული': 'ka-GE',
+    'Guarani / Avañe\'ẽ': 'gn-PY',
+    'Hakha Chin / Laiholh': 'cnh-MM',
+    'Hiligaynon / Ilonggo': 'hil-PH',
+    'Hunsrik / Hunsrik': 'hrx-BR',
+    'Iban / Jaku Iban': 'iba-MY',
+    'Ilocano / Ilokano': 'ilo-PH',
+    'Jamaican Patois / Patwa': 'jam-JM',
+    'Javanese / Basa Jawa': 'jv-ID',
+    'Jingpo / Jinghpaw': 'kac-MM',
+    'Kalaallisut / Kalaallisut': 'kl-GL',
+    'Kanuri / Kanuri': 'kr-NE',
+    'Kapampangan / Kapampangan': 'pam-PH',
+    'Khasi / Ka Ktien Khasi': 'kha-IN',
+    'Kiga / Rukiga': 'cgg-UG',
+    'Kikongo / Kikongo': 'kg-CD',
+    'Kituba / Kituba': 'ktu-CD',
+    'Kokborok / Kokborok': 'trp-IN',
+    'Komi / Коми кыв': 'kv-RU',
+    'Konkani / कोंकणी': 'kok-IN',
+    'Krio / Krio': 'kri-SL',
+    'Kurdish (Kurmanji) / Kurmancî': 'kmr-TR',
+    'Kurdish (Sorani) / سۆرانی': 'ckb-IQ',
+    'Lao / ລາວ': 'lo-LA',
+    'Latgalian / Latgalīšu': 'ltg-LV',
+    'Latin / Latina': 'la-VA',
+    'Ligurian / Ligure': 'lij-IT',
+    'Limburgish / Limburgs': 'li-NL',
+    'Lombard / Lombard': 'lmo-IT',
+    'Luo / Dholuo': 'luo-KE',
+    'Madurese / Basa Madhura': 'mad-ID',
+    'Maithili / मैथिली': 'mai-IN',
+    'Makassar / Basa Mangkasarak': 'mak-ID',
+    'Malagasy / Malagasy': 'mg-MG',
+    'Malay / Bahasa Melayu': 'ms-MY',
+    'Malay (Jawi) / بهاس ملايو': 'ms-Arab-MY',
+    'Mam / Mam': 'mam-GT',
+    'Maori / Te Reo Māori': 'mi-NZ',
+    'Marwadi / मारवाड़ी': 'mwr-IN',
+    'Mauritian Creole / Kreol Morisien': 'mfe-MU',
+    'Meadow Mari / Олык марий йылме': 'mhr-RU',
+    'Meiteilon (Manipuri) / মেইতেই লোন্': 'mni-IN',
+    'Minang / Baso Minangkabau': 'min-ID',
+    'Mizo / Mizo ṭawng': 'lus-IN',
+    'Nahuatl (Eastern Huasteca) / Nāhuatl': 'nhe-MX',
+    'Ndau / ChiNdau': 'ndc-ZW',
+    'Ndebele (South) / isiNdebele': 'nr-ZA',
+    'Nepalbhasa (Newari) / नेपाल भाषा': 'new-NP',
+    'NKo / ߒߞߏ': 'nqo-GN',
+    'Nuer / Thok Naath': 'nus-SS',
+    'Occitan / Occitan': 'oc-FR',
+    'Odia (Oriya) / ଓଡ଼ିଆ': 'or-IN',
+    'Ossetian / Ирон æвзаг': 'os-GE',
+    'Pangasinan / Salitan Pangasinan': 'pag-PH',
+    'Papiamento / Papiamentu': 'pap-AW',
+    'Punjabi (Shahmukhi) / پنجابی': 'pa-Arab-PK',
+    'Quechua / Runa Simi': 'qu-PE',
+    'Qʼeqchiʼ / Qʼeqchiʼ': 'kek-GT',
+    'Romani / Romani čhib': 'rom-RO',
+    'Rundi / Ikirundi': 'rn-BI',
+    'Sami (North) / Davvisámegiella': 'se-NO',
+    'Sango / Sängö': 'sg-CF',
+    'Sanskrit / संस्कृतम्': 'sa-IN',
+    'Santali (Latin) / Santali': 'sat-Latn-IN',
+    'Santali (Ol Chiki) / ᱥᱟᱱᱛᱟᱲᱤ': 'sat-Olck-IN',
+    'Sepedi / Sepedi': 'nso-ZA',
+    'Sesotho / Sesotho': 'st-ZA',
+    'Seychellois Creole / Seselwa': 'crs-SC',
+    'Shan / လိၵ်ႈတႆး': 'shn-MM',
+    'Sicilian / Sicilianu': 'scn-IT',
+    'Silesian / Ślōnsko godka': 'szl-PL',
+    'Sundanese / Basa Sunda': 'su-ID',
+    'Susu / Sosoxui': 'sus-GN',
+    'Swati / siSwati': 'ss-SZ',
+    'Tahitian / Reo Tahiti': 'ty-PF',
+    'Tamazight / ⵜⴰⵎⴰⵣⵉⵖⵜ': 'tzm-MA',
+    'Tamazight (Tifinagh) / ⵜⴰⵎⴰⵣⵉⵖⵜ': 'tzm-Tfng-MA',
+    'Tatar / Татар теле': 'tt-RU',
+    'Tetum / Tetun': 'tet-TL',
+    'Tiv / Tiv': 'tiv-NG',
+    'Tok Pisin / Tok Pisin': 'tpi-PG',
+    'Tshiluba / Tshiluba': 'lua-CD',
+    'Tsonga / Xitsonga': 'ts-ZA',
+    'Tswana / Setswana': 'tn-BW',
+    'Tulu / ತುಳು': 'tcy-IN',
+    'Tumbuka / Chitumbuka': 'tum-MW',
+    'Tuvan / Тыва дыл': 'tyv-RU',
+    'Udmurt / Удмурт кыл': 'udm-RU',
+    'Venda / Tshivenḓa': 've-ZA',
+    'Venetian / Vèneto': 'vec-IT',
+    'Waray / Winaray': 'war-PH',
+    'Yakut / Саха тыла': 'sah-RU',
+    'Yiddish / יידיש': 'yi-001',
+    'Yucatec Maya / Maaya T\'aan': 'yua-MX',
+    'Zapotec / Diidxazá': 'zap-MX'
   }
 };
 
