@@ -532,11 +532,21 @@ class UIManager {
   }
 
   /**
-   * Display an error message to the user
+   * Display an error message to the user (only for persistent failures)
    * @param {string} message - Error message to display
    * @param {string} [type='error'] - Error type for styling
+   * @param {Object} [options={}] - Additional options
    */
-  showErrorMessage(message, type = 'error') {
+  showErrorMessage(message, type = 'error', options = {}) {
+    // Only show error popups for critical failures, not temporary issues
+    const isCritical = options.critical || type === 'critical';
+    
+    if (!isCritical && type === 'error') {
+      // For non-critical errors, just log them and return
+      Logger.warn(`Translation issue (not showing popup): ${message}`, 'UIManager');
+      return;
+    }
+
     // Create or update error display element
     let errorElement = document.getElementById('extension-error-message');
     
@@ -546,7 +556,7 @@ class UIManager {
       errorElement.className = `error-message error-${type}`;
       errorElement.style.cssText = `
         position: fixed;
-        top: 10px;
+        top: 58px;
         left: 10px;
         right: 10px;
         background: #ff3b30;
@@ -556,6 +566,9 @@ class UIManager {
         font-size: 14px;
         z-index: 10000;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-10px);
+        opacity: 0;
+        transition: all 0.3s ease;
       `;
       document.body.appendChild(errorElement);
     }
@@ -563,14 +576,26 @@ class UIManager {
     errorElement.textContent = message;
     errorElement.style.display = 'block';
     
+    // Animate in
+    requestAnimationFrame(() => {
+      errorElement.style.transform = 'translateY(0)';
+      errorElement.style.opacity = '1';
+    });
+    
     Logger.info(`Error message displayed: ${message}`, 'UIManager');
 
-    // Auto-hide after 5 seconds
+    // Auto-hide after shorter time for better UX
     setTimeout(() => {
       if (errorElement) {
-        errorElement.style.display = 'none';
+        errorElement.style.transform = 'translateY(-10px)';
+        errorElement.style.opacity = '0';
+        setTimeout(() => {
+          if (errorElement) {
+            errorElement.style.display = 'none';
+          }
+        }, 300);
       }
-    }, 5000);
+    }, 3000); // Reduced from 5 seconds to 3 seconds
   }
 
   /**
@@ -1174,7 +1199,8 @@ class EventManager {
   }
 
   /**
-   * Handle translate action
+   * Handle translate button click - toggles continuous translation mode
+   * @returns {Promise<void>}
    * @private
    */
   async handleTranslateAction() {
@@ -1189,13 +1215,18 @@ class EventManager {
 
       const sourceLanguage = this.stateManager.get('currentLanguage');
       const targetLanguage = this.stateManager.get('targetLanguage');
-      
+
+      if (!targetLanguage || targetLanguage === 'Select Language') {
+        this.uiManager.showErrorMessage('Please select a target language first', 'error', { critical: true });
+        return;
+      }
+
       if (!isContinuousEnabled) {
         // Start continuous translation mode
         this.stateManager.set('isTranslating', true);
         this.stateManager.set('continuousTranslation', true);
         this.stateManager.set('currentTabId', tab.id);
-        
+
         Logger.info(`Starting continuous translation: ${sourceLanguage} → ${targetLanguage}`, 'EventManager');
 
         // Send start continuous translation request to background script
@@ -1207,17 +1238,32 @@ class EventManager {
         });
 
         if (!response || !response.success) {
-          throw new Error(response?.error || 'Failed to start continuous translation');
+          // Only show critical errors after retries failed
+          const errorMsg = response?.error || 'Failed to start continuous translation';
+          if (errorMsg.includes('rate limited') || 
+              errorMsg.includes('Authentication') ||
+              errorMsg.includes('Service unavailable')) {
+            this.uiManager.showErrorMessage(errorMsg, 'error', { critical: true });
+          } else {
+            // For other errors, just log - user can try again
+            Logger.info('Translation start failed, user can retry', 'EventManager');
+          }
+          
+          // Reset state on failure
+          this.stateManager.set('isTranslating', false);
+          this.stateManager.set('continuousTranslation', false);
+          return;
         }
 
         // Update UI to show continuous translation is active
         this.uiManager.updateTranslateButton(false, true); // not loading, but continuous mode
         Logger.info('Continuous translation started successfully', 'EventManager');
+        
       } else {
         // Stop continuous translation mode - reset state immediately
         this.stateManager.set('isTranslating', false);
         this.stateManager.set('continuousTranslation', false);
-        
+
         // Update UI immediately to prevent button state issues
         this.uiManager.updateTranslateButton(false, false);
         
@@ -1236,9 +1282,16 @@ class EventManager {
 
         Logger.info('Continuous translation stopped successfully', 'EventManager');
       }
+      
     } catch (error) {
       Logger.error('Translation action failed', error, 'EventManager');
-      this.uiManager.showErrorMessage('Translation failed. Please try again.');
+      
+      // Only show critical errors to user
+      if (error.message.includes('No active tab') || 
+          error.message.includes('Extension context')) {
+        this.uiManager.showErrorMessage('Unable to access current page', 'error', { critical: true });
+      }
+      
       // Reset state on any error
       this.stateManager.set('isTranslating', false);
       this.stateManager.set('continuousTranslation', false);
@@ -1322,7 +1375,22 @@ class EventManager {
   handleTranslationError(error) {
     Logger.error('Translation error received', error, 'EventManager');
     this.stateManager.set('isTranslating', false);
-    this.uiManager.showErrorMessage(error || 'Translation failed');
+    
+    // Only show popup for critical errors (after all retries failed)
+    // Most temporary network issues should be handled in background with retries
+    const isCriticalError = error && (
+      error.includes('API endpoint') || 
+      error.includes('rate limited') ||
+      error.includes('Authentication') ||
+      error.includes('exceeded maximum')
+    );
+    
+    if (isCriticalError) {
+      this.uiManager.showErrorMessage(error || 'Translation service unavailable', 'error', { critical: true });
+    } else {
+      // For non-critical errors, just log and let user try again
+      Logger.info('Translation temporarily failed, user can retry', 'EventManager');
+    }
   }
 
   /**
@@ -1399,8 +1467,14 @@ class EventManager {
       this.stateManager.set('isTranslating', false);
       this.stateManager.set('continuousTranslation', false);
       
-      // Show error message
-      this.uiManager.showErrorMessage(`Failed to restart translation on new page: ${error}`);
+      // Only show error for critical issues, not temporary page navigation problems
+      if (error && error.includes('Failed to restart translation')) {
+        // This is usually just a page navigation issue, don't bother the user
+        Logger.info('Continuous translation stopped due to page change', 'EventManager');
+      } else {
+        // Show critical errors only
+        this.uiManager.showErrorMessage(`Translation service error: ${error}`, 'error', { critical: true });
+      }
     }
   }
 

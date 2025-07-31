@@ -868,7 +868,7 @@ class APIManager {
   }
 
   /**
-   * Make an API call with retry logic and error handling
+   * Make an API call with enhanced retry logic and error handling
    * @param {string} endpoint - API endpoint (e.g., '/translate')
    * @param {Object} data - Request data
    * @returns {Promise<Object>} API response
@@ -883,13 +883,22 @@ class APIManager {
 
     Logger.debug(`Making API call to ${endpoint}`, data, 'APIManager');
 
-    for (let attempt = 1; attempt <= CONFIG.API.MAX_RETRIES; attempt++) {
+    // Increased retries for better reliability
+    const maxRetries = 5; // Increased from 3 to 5
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const response = await this.makeRequest(fullUrl, data, attempt);
         Logger.debug(`API call successful after ${attempt} attempt(s)`, null, 'APIManager');
         return response;
       } catch (error) {
-        Logger.warn(`API call attempt ${attempt}/${CONFIG.API.MAX_RETRIES} failed: ${error.message}`, 'APIManager');
+        lastError = error;
+        
+        // Don't log warnings for first few attempts to reduce noise
+        if (attempt >= 3) {
+          Logger.warn(`API call attempt ${attempt}/${maxRetries} failed: ${error.message}`, 'APIManager');
+        }
         
         // Handle rate limiting
         if (error.status === 429) {
@@ -899,16 +908,30 @@ class APIManager {
           }
         }
 
-        // If this is the last attempt, throw the error
-        if (attempt === CONFIG.API.MAX_RETRIES) {
-          throw this.createAPIError(error, endpoint, attempt);
+        // If this is the last attempt, we'll throw after the loop
+        if (attempt === maxRetries) {
+          break;
         }
 
-        // Wait before retrying (exponential backoff)
-        const delay = CONFIG.API.RETRY_DELAY * Math.pow(2, attempt - 1);
+        // Enhanced retry logic with different delays for different error types
+        let delay = CONFIG.API.RETRY_DELAY * Math.pow(2, attempt - 1);
+        
+        // Shorter delays for network errors, longer for server errors
+        if (error.status >= 500) {
+          delay *= 1.5; // Server errors need more time
+        } else if (error.name === 'NetworkError' || !error.status) {
+          delay *= 0.7; // Network errors can be retried faster
+        }
+        
+        // Cap maximum delay at 10 seconds
+        delay = Math.min(delay, 10000);
+        
         await this.sleep(delay);
       }
     }
+
+    // If we get here, all retries failed
+    throw this.createAPIError(lastError, endpoint, maxRetries);
   }
 
   /**
@@ -1603,7 +1626,7 @@ class MessageRouter {
   }
 
   /**
-   * Handle content script error notification
+   * Handle content script error notification with intelligent filtering
    * @param {Object} message - Message data
    * @param {Object} sender - Sender information
    * @private
@@ -1616,12 +1639,29 @@ class MessageRouter {
       this.stateManager.setTranslationState(sender.tab.id, { isTranslating: false });
     }
 
-    // Forward error to sidepanel
-    this.forwardToSidepanel({
-      action: CONFIG.MESSAGES.TRANSLATION_ERROR,
-      error: message.error,
-      context: message.context
-    });
+    // Only forward critical errors that the user needs to know about
+    const errorMessage = message.error || '';
+    const isCriticalError = (
+      errorMessage.includes('Authentication') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('Service unavailable') ||
+      errorMessage.includes('API key') ||
+      message.context === 'critical'
+    );
+
+    // For non-critical errors (network timeouts, temporary failures), 
+    // just log them and let the retry system handle it
+    if (isCriticalError) {
+      // Forward critical errors to sidepanel
+      this.forwardToSidepanel({
+        action: CONFIG.MESSAGES.TRANSLATION_ERROR,
+        error: message.error,
+        context: message.context
+      });
+    } else {
+      // For minor errors, just log and don't bother the user
+      Logger.info('Non-critical content script error handled silently', 'MessageRouter');
+    }
   }
 
   /**
