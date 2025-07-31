@@ -167,66 +167,318 @@ export const LANGUAGES = {
     FALLBACK: 'en-US'
   },
   
-  /** Supported languages for translation */
+  /** Supported languages for translation - sorted by global speakers (native + second language) */
   SUPPORTED: [
-    'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese',
-    'Russian', 'Japanese', 'Korean', 'Chinese', 'Arabic', 'Hindi',
-    'Dutch', 'Swedish', 'Norwegian', 'Danish', 'Finnish', 'Polish',
-    'Czech', 'Hungarian', 'Romanian', 'Bulgarian', 'Croatian', 'Serbian',
-    'Slovak', 'Slovenian', 'Estonian', 'Latvian', 'Lithuanian', 'Greek',
-    'Turkish', 'Hebrew', 'Thai', 'Vietnamese', 'Indonesian', 'Malay',
-    'Filipino', 'Swahili', 'Afrikaans', 'Welsh', 'Irish', 'Scottish Gaelic',
-    'Basque', 'Catalan', 'Galician', 'Esperanto', 'Latin', 'Ukrainian',
-    'Belarusian', 'Albanian', 'Macedonian'
+    // Top 10 most spoken languages globally
+    'English / English',           // ~1.5 billion speakers
+    'Mandarin Chinese / 普通话',  // ~1.1 billion speakers  
+    'Hindi / हिन्दी',             // ~600 million speakers
+    'Spanish / Español',           // ~500 million speakers
+    'French / Français',            // ~280 million speakers
+    'Standard Arabic / العربية الفصحى',   // ~250 million speakers
+    'Bengali / বাংলা',           // ~300 million speakers
+    'Russian / Русский',           // ~260 million speakers
+    'Portuguese / Português',        // ~260 million speakers
+    'Indonesian / Bahasa Indonesia',        // ~200 million speakers
+    
+    // 11-30 most spoken languages
+    'Urdu / اردو',              // ~170 million speakers
+    'German / Deutsch',            // ~130 million speakers
+    'Japanese / 日本語',          // ~125 million speakers
+    'Swahili / Kiswahili',           // ~200 million speakers (L2)
+    'Marathi / मराठी',           // ~95 million speakers
+    'Telugu / తెలుగు',            // ~95 million speakers
+    'Turkish / Türkçe',           // ~90 million speakers
+    'Tamil / தமிழ்',             // ~80 million speakers
+    'Yue Chinese / 粵語',       // ~85 million speakers
+    'Vietnamese / Tiếng Việt',        // ~85 million speakers
+    'Korean / 한국어',            // ~80 million speakers
+    'Italian / Italiano',           // ~65 million speakers
+    'Thai / ไทย',              // ~60 million speakers
+    'Gujarati / ગુજરાતી',          // ~60 million speakers
+    'Jin Chinese / 晉語',       // ~63 million speakers
+    'Persian / فارسی',           // ~70 million speakers
+    'Malay / Bahasa Melayu',             // ~80 million speakers
+    'Kannada / ಕನ್ನಡ',           // ~45 million speakers
+    'Burmese / မြန်မာဘာသာ',           // ~35 million speakers
+    'Ukrainian / Українська',         // ~40 million speakers
+    
+    // 31-60 most spoken languages
+    'Bhojpuri / भोजपुरी',          // ~52 million speakers
+    'Tagalog / Tagalog',           // ~45 million speakers
+    'Yoruba / Yorùbá',            // ~45 million speakers
+    'Odia / ଓଡ଼ିଆ',              // ~38 million speakers
+    'Maithili / मैथिली',          // ~35 million speakers
+    'Uzbek / Oʻzbekcha',             // ~34 million speakers
+    'Sindhi / سنڌي',            // ~30 million speakers
+    'Amharic / አማርኛ',           // ~35 million speakers
+    'Fula / Fulfulde',              // ~40 million speakers
+    'Romanian / Română',          // ~20 million speakers
+    'Oromo / Afaan Oromoo',             // ~37 million speakers
+    'Igbo / Igbo',              // ~27 million speakers
+    'Azerbaijani / Azərbaycan dili',       // ~24 million speakers
+    'Awadhi / अवधी',            // ~40 million speakers
+    'Gan Chinese / 贛語',       // ~31 million speakers
+    'Cebuano / Cebuano',           // ~25 million speakers
+    'Dutch / Nederlands',             // ~24 million speakers
+    'Kurdish / کوردی',           // ~30 million speakers
+    'Serbo-Croatian / Српскохрватски',    // ~21 million speakers
+    'Malagasy / Malagasy',          // ~25 million speakers
+    
+    // 61-90 most spoken languages  
+    'Saraiki / سرائیکی',           // ~26 million speakers
+    'Nepali / नेपाली',            // ~16 million speakers
+    'Sinhala / සිංහල',           // ~17 million speakers
+    'Chittagonian / চাটগাঁইয়া',      // ~16 million speakers
+    'Zhuang / Vahcuengh',            // ~18 million speakers
+    'Khmer / ខ្មែរ',             // ~16 million speakers
+    'Turkmen / Türkmen dili',           // ~12 million speakers
+    'Assamese / অসমীয়া',          // ~15 million speakers
+    'Madurese / Basa Madhura',          // ~15 million speakers
+    'Somali / Soomaali',            // ~16 million speakers
+    'Marwari / मारवाड़ी',           // ~13 million speakers
+    'Magahi / मगही',            // ~13 million speakers
+    'Haryanvi / हरियाणवी',          // ~13 million speakers
+    'Hungarian / Magyar',         // ~13 million speakers
+    'Chewa / Chichewa',             // ~12 million speakers
+    'Greek / Ελληνικά',             // ~13 million speakers
+    'Chhatisgarhi / छत्तीसगढ़ी',      // ~12 million speakers
+    'Deccan / دکنی',            // ~13 million speakers
+    'Akan / Akan',              // ~11 million speakers
+    'Kazakh / Қазақша',            // ~12 million speakers
+    
+    // 91-120 most spoken languages
+    'Northern Min / 閩北語',      // ~10 million speakers
+    'Sylheti / সিলেটি',           // ~11 million speakers
+    'Zulu / isiZulu',              // ~12 million speakers
+    'Czech / Čeština',             // ~10 million speakers
+    'Kinyarwanda / Ikinyarwanda',       // ~12 million speakers
+    'Dhundhari / ढूंढाड़ी',         // ~11 million speakers
+    'Haitian Creole / Kreyòl Ayisyen',    // ~12 million speakers
+    'Eastern Min / 閩東語',       // ~10 million speakers
+    'Ilocano / Ilokano',           // ~10 million speakers
+    'Quechua / Runa Simi',           // ~8 million speakers
+    'Kirundi / Ikirundi',           // ~9 million speakers
+    'Swedish / Svenska',           // ~10 million speakers
+    'Hmong / Hmoob',             // ~9 million speakers
+    'Shona / chiShona',             // ~11 million speakers
+    'Uyghur / ئۇيغۇرچە',            // ~10 million speakers
+    'Hiligaynon / Ilonggo',        // ~9 million speakers
+    'Mossi / Mooré',             // ~8 million speakers
+    'Xhosa / isiXhosa',             // ~8 million speakers
+    'Belarusian / Беларуская',        // ~5 million speakers
+    'Balochi / بلۏچی',           // ~8 million speakers
+    
+    // Additional European and other languages
+    'Polish / Polski',            // ~45 million speakers
+    'Afrikaans / Afrikaans',         // ~7 million speakers
+    'Albanian / Shqip',          // ~6 million speakers
+    'Armenian / Հայերեն',          // ~7 million speakers
+    'Basque / Euskera',            // ~1 million speakers
+    'Bosnian / Bosanski',           // ~3 million speakers
+    'Bulgarian / Български',         // ~8 million speakers
+    'Catalan / Català',           // ~10 million speakers
+    'Croatian / Hrvatski',          // ~5 million speakers
+    'Danish / Dansk',            // ~6 million speakers
+    'Estonian / Eesti',          // ~1 million speakers
+    'Finnish / Suomi',           // ~5 million speakers
+    'Galician / Galego',          // ~2.4 million speakers
+    'Georgian / ქართული',          // ~4 million speakers
+    'Hebrew / עברית',            // ~9 million speakers
+    'Icelandic / Íslenska',         // ~300k speakers
+    'Irish / Gaeilge',             // ~1.7 million speakers
+    'Latvian / Latviešu',           // ~1.3 million speakers
+    'Lithuanian / Lietuvių',        // ~3 million speakers
+    'Luxembourgish / Lëtzebuergesch',     // ~400k speakers
+    'Macedonian / Македонски',        // ~2 million speakers
+    'Maltese / Malti',           // ~520k speakers
+    'Montenegrin / Crnogorski',       // ~300k speakers
+    'Norwegian / Norsk',         // ~5 million speakers
+    'Scottish Gaelic / Gàidhlig',   // ~57k speakers
+    'Serbian / Српски',           // ~8 million speakers
+    'Slovak / Slovenčina',           // ~5 million speakers
+    'Slovenian / Slovenščina',         // ~2.5 million speakers
+    'Welsh / Cymraeg',             // ~580k speakers
+    
+    // Additional Asian and African languages
+    'Bambara / Bamanankan',           // ~15 million speakers
+    'Ewe / Èʋegbe',               // ~6 million speakers
+    'Hausa / Harshen Hausa',             // ~70 million speakers
+    'Lingala / Lingála',           // ~15 million speakers
+    'Luganda / Luganda',           // ~5.6 million speakers
+    'Twi / Twi',               // ~17 million speakers
+    'Wolof / Wolof',             // ~5.2 million speakers
+    'Tigrinya / ትግርኛ',          // ~9 million speakers
+    'Kongo / Kikongo',             // ~7 million speakers
+    'Luo / Dholuo',               // ~4.2 million speakers
+    'Bemba / Ichibemba',             // ~4 million speakers
+    'Tonga / chiTonga',             // ~1.8 million speakers
+    'Ndebele / isiNdebele',           // ~2.1 million speakers
+    'Venda / Tshivenḓa',             // ~1.2 million speakers
+    'Tsonga / Xitsonga',            // ~4.4 million speakers
+    'Swazi / siSwati',             // ~2.3 million speakers
+    'Sotho / Sesotho',             // ~5.6 million speakers
+    'Pedi / Sepedi',              // ~4.7 million speakers
+    'Lao / ລາວ',               // ~30 million speakers
+    'Mongolian / Монгол хэл',         // ~5.7 million speakers
+    'Tibetan / བོད་ཡིག',           // ~6 million speakers
+    'Dzongkha / རྫོང་ཁ',          // ~630k speakers
+    'Filipino / Filipino',          // ~45 million speakers
+    
+    // Classical and constructed languages
+    'Latin / Latina',             // Classical language
+    'Esperanto / Esperanto',         // ~2 million speakers
+    'Sanskrit / संस्कृतम्'           // Classical language
   ],
   
   /** Language code mappings for TTS and API calls */
   CODES: {
-    'English': 'en-US',
-    'Spanish': 'es-ES',
-    'French': 'fr-FR',
-    'German': 'de-DE',
-    'Italian': 'it-IT',
-    'Portuguese': 'pt-PT',
-    'Russian': 'ru-RU',
-    'Japanese': 'ja-JP',
-    'Korean': 'ko-KR',
-    'Chinese': 'zh-CN',
-    'Arabic': 'ar-SA',
-    'Hindi': 'hi-IN',
-    'Dutch': 'nl-NL',
-    'Swedish': 'sv-SE',
-    'Norwegian': 'no-NO',
-    'Danish': 'da-DK',
-    'Finnish': 'fi-FI',
-    'Polish': 'pl-PL',
-    'Czech': 'cs-CZ',
-    'Hungarian': 'hu-HU',
-    'Romanian': 'ro-RO',
-    'Bulgarian': 'bg-BG',
-    'Croatian': 'hr-HR',
-    'Serbian': 'sr-RS',
-    'Slovak': 'sk-SK',
-    'Slovenian': 'sl-SI',
-    'Estonian': 'et-EE',
-    'Latvian': 'lv-LV',
-    'Lithuanian': 'lt-LT',
-    'Greek': 'el-GR',
-    'Turkish': 'tr-TR',
-    'Hebrew': 'he-IL',
-    'Thai': 'th-TH',
-    'Vietnamese': 'vi-VN',
-    'Indonesian': 'id-ID',
-    'Malay': 'ms-MY',
-    'Filipino': 'fil-PH',
-    'Swahili': 'sw-KE',
-    'Afrikaans': 'af-ZA',
-    'Welsh': 'cy-GB',
-    'Irish': 'ga-IE',
-    'Ukrainian': 'uk-UA',
-    'Belarusian': 'be-BY',
-    'Albanian': 'sq-AL',
-    'Macedonian': 'mk-MK'
+    // Major world languages
+    'English / English': 'en-US',
+    'Mandarin Chinese / 普通话': 'zh-CN',
+    'Hindi / हिन्दी': 'hi-IN',
+    'Spanish / Español': 'es-ES',
+    'French / Français': 'fr-FR',
+    'Standard Arabic / العربية الفصحى': 'ar-SA',
+    'Bengali / বাংলা': 'bn-BD',
+    'Russian / Русский': 'ru-RU',
+    'Portuguese / Português': 'pt-PT',
+    'Indonesian / Bahasa Indonesia': 'id-ID',
+    'Urdu / اردو': 'ur-PK',
+    'German / Deutsch': 'de-DE',
+    'Japanese / 日本語': 'ja-JP',
+    'Swahili / Kiswahili': 'sw-KE',
+    'Marathi / मराठी': 'mr-IN',
+    'Telugu / తెలుగు': 'te-IN',
+    'Turkish / Türkçe': 'tr-TR',
+    'Tamil / தமிழ்': 'ta-IN',
+    'Yue Chinese / 粵語': 'zh-HK',
+    'Vietnamese / Tiếng Việt': 'vi-VN',
+    'Korean / 한국어': 'ko-KR',
+    'Italian / Italiano': 'it-IT',
+    'Thai / ไทย': 'th-TH',
+    'Gujarati / ગુજરાતી': 'gu-IN',
+    'Jin Chinese / 晉語': 'zh-CN',
+    'Persian / فارسی': 'fa-IR',
+    'Malay / Bahasa Melayu': 'ms-MY',
+    'Kannada / ಕನ್ನಡ': 'kn-IN',
+    'Burmese / မြန်မာဘာသာ': 'my-MM',
+    'Ukrainian / Українська': 'uk-UA',
+    'Bhojpuri / भोजपुरी': 'bho-IN',
+    'Tagalog / Tagalog': 'tl-PH',
+    'Yoruba / Yorùbá': 'yo-NG',
+    'Odia / ଓଡ଼ିଆ': 'or-IN',
+    'Maithili / मैथिली': 'mai-IN',
+    'Uzbek / Oʻzbekcha': 'uz-UZ',
+    'Sindhi / سنڌي': 'sd-PK',
+    'Amharic / አማርኛ': 'am-ET',
+    'Fula / Fulfulde': 'ff-SN',
+    'Romanian / Română': 'ro-RO',
+    'Oromo / Afaan Oromoo': 'om-ET',
+    'Igbo / Igbo': 'ig-NG',
+    'Azerbaijani / Azərbaycan dili': 'az-AZ',
+    'Awadhi / अवधी': 'awa-IN',
+    'Gan Chinese / 贛語': 'zh-CN',
+    'Cebuano / Cebuano': 'ceb-PH',
+    'Dutch / Nederlands': 'nl-NL',
+    'Kurdish / کوردی': 'ku-TR',
+    'Serbo-Croatian / Српскохрватски': 'sh-RS',
+    'Malagasy / Malagasy': 'mg-MG',
+    'Saraiki / سرائیکی': 'skr-PK',
+    'Nepali / नेपाली': 'ne-NP',
+    'Sinhala / සිංහල': 'si-LK',
+    'Chittagonian / চাটগাঁইয়া': 'ctg-BD',
+    'Zhuang / Vahcuengh': 'za-CN',
+    'Khmer / ខ្មែរ': 'km-KH',
+    'Turkmen / Türkmen dili': 'tk-TM',
+    'Assamese / অসমীয়া': 'as-IN',
+    'Madurese / Basa Madhura': 'mad-ID',
+    'Somali / Soomaali': 'so-SO',
+    'Marwari / मारवाड़ी': 'mwr-IN',
+    'Magahi / मगही': 'mag-IN',
+    'Haryanvi / हरियाणवी': 'bgc-IN',
+    'Hungarian / Magyar': 'hu-HU',
+    'Chewa / Chichewa': 'ny-MW',
+    'Greek / Ελληνικά': 'el-GR',
+    'Chhatisgarhi / छत्तीसगढ़ी': 'hne-IN',
+    'Deccan / دکنی': 'dcc-IN',
+    'Akan / Akan': 'ak-GH',
+    'Kazakh / Қазақша': 'kk-KZ',
+    'Northern Min / 閩北語': 'mnp-CN',
+    'Sylheti / সিলেটি': 'syl-BD',
+    'Zulu / isiZulu': 'zu-ZA',
+    'Czech / Čeština': 'cs-CZ',
+    'Kinyarwanda / Ikinyarwanda': 'rw-RW',
+    'Dhundhari / ढूंढाड़ी': 'dhd-IN',
+    'Haitian Creole / Kreyòl Ayisyen': 'ht-HT',
+    'Eastern Min / 閩東語': 'cdo-CN',
+    'Ilocano / Ilokano': 'ilo-PH',
+    'Quechua / Runa Simi': 'qu-PE',
+    'Kirundi / Ikirundi': 'rn-BI',
+    'Swedish / Svenska': 'sv-SE',
+    'Hmong / Hmoob': 'hmn-CN',
+    'Shona / chiShona': 'sn-ZW',
+    'Uyghur / ئۇيغۇرچە': 'ug-CN',
+    'Hiligaynon / Ilonggo': 'hil-PH',
+    'Mossi / Mooré': 'mos-BF',
+    'Xhosa / isiXhosa': 'xh-ZA',
+    'Belarusian / Беларуская': 'be-BY',
+    'Balochi / بلۏچی': 'bal-PK',
+    'Polish / Polski': 'pl-PL',
+    'Afrikaans / Afrikaans': 'af-ZA',
+    'Albanian / Shqip': 'sq-AL',
+    'Armenian / Հայերեն': 'hy-AM',
+    'Basque / Euskera': 'eu-ES',
+    'Bosnian / Bosanski': 'bs-BA',
+    'Bulgarian / Български': 'bg-BG',
+    'Catalan / Català': 'ca-ES',
+    'Croatian / Hrvatski': 'hr-HR',
+    'Danish / Dansk': 'da-DK',
+    'Estonian / Eesti': 'et-EE',
+    'Finnish / Suomi': 'fi-FI',
+    'Galician / Galego': 'gl-ES',
+    'Georgian / ქართული': 'ka-GE',
+    'Hebrew / עברית': 'he-IL',
+    'Icelandic / Íslenska': 'is-IS',
+    'Irish / Gaeilge': 'ga-IE',
+    'Latvian / Latviešu': 'lv-LV',
+    'Lithuanian / Lietuvių': 'lt-LT',
+    'Luxembourgish / Lëtzebuergesch': 'lb-LU',
+    'Macedonian / Македонски': 'mk-MK',
+    'Maltese / Malti': 'mt-MT',
+    'Montenegrin / Crnogorski': 'cnr-ME',
+    'Norwegian / Norsk': 'no-NO',
+    'Scottish Gaelic / Gàidhlig': 'gd-GB',
+    'Serbian / Српски': 'sr-RS',
+    'Slovak / Slovenčina': 'sk-SK',
+    'Slovenian / Slovenščina': 'sl-SI',
+    'Welsh / Cymraeg': 'cy-GB',
+    'Bambara / Bamanankan': 'bm-ML',
+    'Ewe / Èʋegbe': 'ee-GH',
+    'Hausa / Harshen Hausa': 'ha-NG',
+    'Lingala / Lingála': 'ln-CD',
+    'Luganda / Luganda': 'lg-UG',
+    'Twi / Twi': 'tw-GH',
+    'Wolof / Wolof': 'wo-SN',
+    'Tigrinya / ትግርኛ': 'ti-ER',
+    'Kongo / Kikongo': 'kg-CD',
+    'Luo / Dholuo': 'luo-KE',
+    'Bemba / Ichibemba': 'bem-ZM',
+    'Tonga / chiTonga': 'to-TO',
+    'Ndebele / isiNdebele': 'nd-ZW',
+    'Venda / Tshivenḓa': 've-ZA',
+    'Tsonga / Xitsonga': 'ts-ZA',
+    'Swazi / siSwati': 'ss-SZ',
+    'Sotho / Sesotho': 'st-ZA',
+    'Pedi / Sepedi': 'nso-ZA',
+    'Lao / ລາວ': 'lo-LA',
+    'Mongolian / Монгол хэл': 'mn-MN',
+    'Tibetan / བོད་ཡིག': 'bo-CN',
+    'Dzongkha / རྫོང་ཁ': 'dz-BT',
+    'Filipino / Filipino': 'fil-PH',
+    'Latin / Latina': 'la-VA',
+    'Esperanto / Esperanto': 'eo-001',
+    'Sanskrit / संस्कृतम्': 'sa-IN'
   }
 };
 
