@@ -1,5 +1,5 @@
 /**
- * @fileoverview Background Service Worker for AI Page Translator Chrome Extension
+ * @fileoverview Background Service Worker for Uno Translate Chrome Extension
  * 
  * This service worker acts as the central coordinator for the extension. It handles:
  * - Inter-script communication between sidepanel and content scripts
@@ -16,7 +16,7 @@
  * - MessageRouter: Routes messages between different extension components
  * - ErrorHandler: Centralized error handling and reporting
  * 
- * @author AI Page Translator Team
+ * @author Uno Translate Team
  * @version 1.0.0
  */
 
@@ -2165,7 +2165,7 @@ class BackgroundApp {
    * @private
    */
   initialize() {
-    Logger.info('AI Page Translator background service worker initialized', 'BackgroundApp');
+    Logger.info('Uno Translate background service worker initialized', 'BackgroundApp');
     Logger.info('Extension configuration loaded successfully', 'BackgroundApp');
 
     // Log initial statistics

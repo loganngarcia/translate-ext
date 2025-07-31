@@ -25,7 +25,7 @@ This guide will help you verify that your Chrome extension sidepanel is working 
 1. Look for your extension icon in Chrome toolbar
 2. Click the extension icon
 3. Sidepanel should open on the right side
-4. You should see "AI Page Translator" interface
+4. You should see "Uno Translate" interface
 ```
 
 ## 🔧 **If Sidepanel Doesn't Open**

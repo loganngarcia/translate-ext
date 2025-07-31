@@ -1,11 +1,11 @@
 /**
- * @fileoverview Utility functions for AI Page Translator Chrome Extension
+ * @fileoverview Utility functions for Uno Translate Chrome Extension
  * 
  * This file contains reusable helper functions that are used across multiple
  * components of the extension. Functions are organized by category for easy
  * navigation and maintenance.
  * 
- * @author AI Page Translator Team
+ * @author Uno Translate Team
  * @version 1.0.0
  */
 

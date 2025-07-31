@@ -1,11 +1,11 @@
 /**
- * @fileoverview Centralized constants for AI Page Translator Chrome Extension
+ * @fileoverview Centralized constants for Uno Translate Chrome Extension
  * 
  * This file contains all configuration values, API endpoints, and shared constants
  * used throughout the extension. Centralizing these makes the codebase easier to
  * maintain and configure.
  * 
- * @author AI Page Translator Team
+ * @author Uno Translate Team
  * @version 1.0.0
  */
 

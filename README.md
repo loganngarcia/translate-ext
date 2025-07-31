@@ -1,4 +1,4 @@
-# AI Page Translator - Chrome Extension
+# Uno Translate - Chrome Extension
 
 A Chrome sidepanel extension that translates web pages using AWS Nova-lite 1.0, featuring real-time translation overlay, AI-powered summaries, and text-to-speech functionality.
 

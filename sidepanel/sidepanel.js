@@ -1,5 +1,5 @@
 /**
- * @fileoverview Sidepanel JavaScript for AI Page Translator Chrome Extension
+ * @fileoverview Sidepanel JavaScript for Uno Translate Chrome Extension
  * 
  * This is the main UI controller for the sidepanel. It handles:
  * - Language selection and preference management
@@ -16,7 +16,7 @@
  * - Storage operations through StorageManager
  * - Speech functionality through SpeechManager
  * 
- * @author AI Page Translator Team
+ * @author Uno Translate Team
  * @version 1.0.0
  */
 

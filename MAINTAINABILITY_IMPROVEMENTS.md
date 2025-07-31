@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-This document summarizes the comprehensive refactoring performed on the AI Page Translator Chrome Extension to make it **significantly more maintainable** and **SWE intern-friendly**. The codebase has been transformed from a basic functional implementation to a **production-quality, enterprise-grade architecture**.
+This document summarizes the comprehensive refactoring performed on the Uno Translate Chrome Extension to make it **significantly more maintainable** and **SWE intern-friendly**. The codebase has been transformed from a basic functional implementation to a **production-quality, enterprise-grade architecture**.
 
 ---
 

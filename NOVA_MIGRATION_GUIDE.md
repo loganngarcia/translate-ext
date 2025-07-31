@@ -1,8 +1,8 @@
-# AI Page Translator: OpenAI to AWS Nova-lite 1.0 Migration Guide
+# Uno Translate: OpenAI to AWS Nova-lite 1.0 Migration Guide
 
 ## 🚀 Migration Overview
 
-This document outlines the complete migration of the AI Page Translator Chrome Extension from OpenAI GPT-4o-mini to **AWS Nova-lite 1.0**, resulting in significant cost savings and improved performance for hackathon environments.
+This document outlines the complete migration of the Uno Translate Chrome Extension from OpenAI GPT-4o-mini to **AWS Nova-lite 1.0**, resulting in significant cost savings and improved performance for hackathon environments.
 
 ## 💰 Key Benefits
 
@@ -232,7 +232,7 @@ For issues related to this migration:
 
 ## 🎉 Migration Complete!
 
-Your AI Page Translator extension is now powered by AWS Nova-lite 1.0, delivering:
+Your Uno Translate extension is now powered by AWS Nova-lite 1.0, delivering:
 - **75% cost reduction**
 - **Faster inference**
 - **Better tool calling**

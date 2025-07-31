@@ -1,4 +1,4 @@
-# Developer Guide - AI Page Translator Chrome Extension
+# Developer Guide - Uno Translate Chrome Extension
 
 ## 📚 Table of Contents
 

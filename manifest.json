@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AI Page Translator",
+  "name": "Uno Translate",
   "version": "1.0.0",
   "description": "Translate web pages with AI-powered summaries and real-time overlay",
   
@@ -35,7 +35,7 @@
   },
   
   "action": {
-    "default_title": "Open AI Translator"
+    "default_title": "Open Uno Translate"
   },
   
   "icons": {
