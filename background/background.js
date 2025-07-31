@@ -2020,8 +2020,23 @@ let backgroundApp;
 function initializeBackground() {
   try {
     backgroundApp = new BackgroundApp();
+    
+    // Configure sidepanel behavior to open on action click
+    setupSidepanelBehavior();
   } catch (error) {
     Logger.error('Failed to initialize background application', error, 'Main');
+  }
+}
+
+/**
+ * Configure sidepanel to open when extension icon is clicked
+ */
+function setupSidepanelBehavior() {
+  try {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    Logger.info('Sidepanel behavior configured to open on action click', 'Main');
+  } catch (error) {
+    Logger.error('Failed to configure sidepanel behavior', error, 'Main');
   }
 }
 
