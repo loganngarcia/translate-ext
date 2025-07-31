@@ -12,42 +12,87 @@ let continuousTranslation = {
 
 // Initialize content script
 function initializeContentScript() {
-  setupMessageListeners();
-  
-  // Auto-extract initial content for quick access
-  extractPageContent();
+  try {
+    // Ensure we're on a valid page
+    if (!document || !document.body) {
+      console.warn('Content script: Document not ready, retrying in 1 second');
+      setTimeout(initializeContentScript, 1000);
+      return;
+    }
+
+    setupMessageListeners();
+    
+    // Auto-extract initial content for quick access
+    extractPageContent();
+    
+    // Notify background script that content script is ready
+    chrome.runtime.sendMessage({
+      action: 'contentScriptReady',
+      url: window.location.href,
+      timestamp: Date.now()
+    }).catch(error => {
+      console.warn('Content script: Failed to notify background script:', error);
+    });
+    
+    console.log('Content script initialized successfully');
+  } catch (error) {
+    console.error('Content script initialization failed:', error);
+    // Retry initialization after a delay
+    setTimeout(initializeContentScript, 2000);
+  }
 }
 
 function setupMessageListeners() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    switch (message.action) {
-      case 'extractContent':
-        handleExtractContent(sendResponse);
-        return true; // Keep message channel open for async response
-        
-      case 'translatePage':
-        handleTranslatePage(message, sendResponse);
+    try {
+      // Validate message
+      if (!message || !message.action) {
+        console.error('Content script: Invalid message received:', message);
+        sendResponse({ success: false, error: 'Invalid message format' });
         return true;
-        
-      case 'toggleTranslation':
-        handleToggleTranslation();
-        break;
-        
-      case 'restoreOriginal':
-        restoreOriginalContent();
-        break;
+      }
 
-      case 'startContinuousTranslation':
-        handleStartContinuousTranslation(message, sendResponse);
-        return true;
+      console.log('Content script: Received message:', message.action);
 
-      case 'stopContinuousTranslation':
-        handleStopContinuousTranslation(message, sendResponse);
-        break;
+      switch (message.action) {
+        case 'extractContent':
+          handleExtractContent(sendResponse);
+          return true; // Keep message channel open for async response
+          
+        case 'translatePage':
+          handleTranslatePage(message, sendResponse);
+          return true;
+          
+        case 'toggleTranslation':
+          handleToggleTranslation();
+          sendResponse({ success: true });
+          break;
+          
+        case 'restoreOriginal':
+          restoreOriginalContent();
+          sendResponse({ success: true });
+          break;
 
-      case 'updateContinuousLanguage':
-        handleUpdateContinuousLanguage(message, sendResponse);
-        return true;
+        case 'startContinuousTranslation':
+          handleStartContinuousTranslation(message, sendResponse);
+          return true;
+
+        case 'stopContinuousTranslation':
+          handleStopContinuousTranslation(message, sendResponse);
+          return true;
+
+        case 'updateContinuousLanguage':
+          handleUpdateContinuousLanguage(message, sendResponse);
+          return true;
+
+        default:
+          console.warn('Content script: Unknown message action:', message.action);
+          sendResponse({ success: false, error: 'Unknown action' });
+          break;
+      }
+    } catch (error) {
+      console.error('Content script: Error handling message:', error);
+      sendResponse({ success: false, error: error.message });
     }
   });
 }
@@ -136,45 +181,73 @@ async function handleTranslatePage(message, sendResponse) {
     
     console.log('🚀 Starting streaming translation:', { sourceLanguage, targetLanguage });
     
-    // Notify sidepanel that translation has started
-    chrome.runtime.sendMessage({
-      action: 'translationStarted',
-      sourceLanguage,
-      targetLanguage
-    }).catch(() => {}); // Ignore if sidepanel not open
-    
-    // Store current translation state
-    currentTranslation = { sourceLanguage, targetLanguage, isActive: true };
-    
-    // Extract content and get text elements
-    const content = extractPageContent();
-    const textElements = getTextElements();
-    
-    // Store original content for potential restoration
-    if (!isTranslated) {
-      textElements.forEach(element => {
-        const originalText = getDirectTextContent(element);
-        if (originalText) {
-          originalContent.set(element, originalText);
-        }
-      });
+    // Validate inputs
+    if (!targetLanguage) {
+      throw new Error('Target language is required');
     }
     
-    // Process elements in chunks for streaming translation
-    await processElementsInStreaming(textElements, sourceLanguage, targetLanguage);
+    // Set a timeout for the entire translation process
+    const translationTimeout = setTimeout(() => {
+      console.error('❌ Translation timeout - taking too long');
+      currentTranslation = null;
+      sendResponse({ success: false, error: 'Translation timeout - please try again' });
+    }, 60000); // 60 second timeout
     
-    // Mark as translated and start observing for dynamic content
-    isTranslated = true;
-    startObservingChanges();
-    
-    // Notify sidepanel that translation completed
-    chrome.runtime.sendMessage({
-      action: 'translationComplete',
-      message: 'Page translation completed successfully'
-    }).catch(() => {}); // Ignore if sidepanel not open
-    
-    console.log('✅ Streaming translation completed');
-    sendResponse({ success: true });
+    try {
+      // Notify sidepanel that translation has started
+      chrome.runtime.sendMessage({
+        action: 'translationStarted',
+        sourceLanguage,
+        targetLanguage
+      }).catch(() => {}); // Ignore if sidepanel not open
+      
+      // Store current translation state
+      currentTranslation = { sourceLanguage, targetLanguage, isActive: true };
+      
+      // Extract content and get text elements
+      const content = extractPageContent();
+      const textElements = getTextElements();
+      
+      console.log(`📄 Found ${textElements.length} text elements to translate`);
+      
+      // Validate we have content to translate
+      if (textElements.length === 0) {
+        throw new Error('No text content found to translate');
+      }
+      
+      // Store original content for potential restoration
+      if (!isTranslated) {
+        textElements.forEach(element => {
+          const originalText = getDirectTextContent(element);
+          if (originalText) {
+            originalContent.set(element, originalText);
+          }
+        });
+      }
+      
+      // Process elements in chunks for streaming translation
+      await processElementsInStreaming(textElements, sourceLanguage, targetLanguage);
+      
+      // Mark as translated and start observing for dynamic content
+      isTranslated = true;
+      startObservingChanges();
+      
+      // Clear timeout since we succeeded
+      clearTimeout(translationTimeout);
+      
+      // Notify sidepanel that translation completed
+      chrome.runtime.sendMessage({
+        action: 'translationComplete',
+        message: 'Page translation completed successfully'
+      }).catch(() => {}); // Ignore if sidepanel not open
+      
+      console.log('✅ Streaming translation completed');
+      sendResponse({ success: true });
+      
+    } catch (error) {
+      clearTimeout(translationTimeout);
+      throw error;
+    }
     
   } catch (error) {
     console.error('❌ Streaming translation error:', error);

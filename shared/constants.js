@@ -24,8 +24,7 @@ export const API = {
   /** API endpoints */
   ENDPOINTS: {
     TRANSLATE: '/translate',
-    SUMMARIZE: '/summarize',
-    DETECT_LANGUAGE: '/detect-language'
+    SUMMARIZE: '/summarize'
   },
   
   /** AWS Nova-lite model configuration */

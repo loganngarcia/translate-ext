@@ -34,12 +34,11 @@ const CONFIG = {
     BASE_URL: 'https://xqcgj6knsd.execute-api.us-west-2.amazonaws.com/dev',
     ENDPOINTS: {
       TRANSLATE: '/translate',
-      SUMMARIZE: '/summarize',
-      DETECT_LANGUAGE: '/detect-language'
+      SUMMARIZE: '/summarize'
     },
-    TIMEOUT: 30000, // 30 seconds
-    MAX_RETRIES: 3,
-    RETRY_DELAY: 1000 // milliseconds
+    TIMEOUT: 60000, // Increased from 30 to 60 seconds
+    MAX_RETRIES: 5,
+    RETRY_DELAY: 2000 // Increased from 1000 to 2000 milliseconds
   },
 
   // AWS Nova-lite model settings
@@ -94,6 +93,13 @@ const CONFIG = {
   PERFORMANCE: {
     ENABLE_TIMING: true,
     SLOW_OPERATION_THRESHOLD: 5000 // 5 seconds
+  },
+
+  // Communication timeouts
+  COMMUNICATION: {
+    CONTENT_SCRIPT_TIMEOUT: 30000, // Increased from 10 to 30 seconds
+    SIDEPANEL_TIMEOUT: 15000, // 15 seconds for sidepanel communication
+    MESSAGE_TIMEOUT: 20000 // 20 seconds for general message handling
   }
 };
 
@@ -950,11 +956,26 @@ class APIManager {
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.API.TIMEOUT);
 
     try {
+      // Validate request data before sending
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid request data format');
+      }
+
+      // Ensure required fields are present for different endpoints
+      const endpoint = url.split('/').pop();
+      if (endpoint === 'translate' && (!data.content || !data.targetLanguage)) {
+        throw new Error('Missing required fields: content and targetLanguage');
+      }
+      if (endpoint === 'summarize' && (!data.content || !data.targetLanguage)) {
+        throw new Error('Missing required fields: content and targetLanguage');
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'User-Agent': 'UnoTranslate/1.0.0'
         },
         body: JSON.stringify(data),
         signal: controller.signal
@@ -963,10 +984,32 @@ class APIManager {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (parseError) {
+          // If we can't parse the error response, use the status text
+          Logger.warn(`Failed to parse error response: ${parseError.message}`, 'APIManager');
+        }
+
+        const error = new Error(errorMessage);
         error.status = response.status;
         error.headers = response.headers;
+        
+        // Log detailed error information for debugging
+        Logger.error(`API request failed: ${errorMessage}`, {
+          status: response.status,
+          url: url,
+          data: data,
+          attempt: attempt
+        }, 'APIManager');
+        
         throw error;
       }
 
@@ -1043,37 +1086,78 @@ class APIManager {
    * @returns {Promise<Object>} Translation result with translations object
    */
   async translateContent(content, sourceLanguage, targetLanguage) {
-    // Handle both single strings and arrays of strings
-    const textToTranslate = Array.isArray(content) ? content.join('\n---SEPARATOR---\n') : content;
-    
-    const requestData = {
-      action: 'translate',
-      content: textToTranslate,
-      sourceLanguage,
-      targetLanguage,
-      model: CONFIG.NOVA.MODEL_ID
-    };
+    try {
+      // Validate input
+      if (!content || (typeof content !== 'string' && !Array.isArray(content))) {
+        throw new Error('Invalid content: must be a string or array of strings');
+      }
+      if (!targetLanguage) {
+        throw new Error('Target language is required');
+      }
 
-    const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.TRANSLATE, requestData);
-    
-    // If we sent an array, we need to split the response back
-    if (Array.isArray(content) && response.translations) {
-      const combinedTranslations = {};
-      const originalTexts = content;
+      // Handle both single strings and arrays of strings
+      let textToTranslate;
+      if (Array.isArray(content)) {
+        // Validate array content
+        if (content.length === 0) {
+          throw new Error('Content array cannot be empty');
+        }
+        textToTranslate = content.join('\n---SEPARATOR---\n');
+      } else {
+        // Sanitize string content
+        textToTranslate = content.trim();
+        if (textToTranslate.length === 0) {
+          throw new Error('Content cannot be empty after trimming');
+        }
+      }
+
+      // Limit content size to prevent API issues
+      const maxContentLength = 50000; // 50KB limit
+      if (textToTranslate.length > maxContentLength) {
+        Logger.warn(`Content too large (${textToTranslate.length} chars), truncating to ${maxContentLength}`, 'APIManager');
+        textToTranslate = textToTranslate.substring(0, maxContentLength) + '...';
+      }
+
+      const requestData = {
+        action: 'translate',
+        content: textToTranslate,
+        sourceLanguage: sourceLanguage || 'auto',
+        targetLanguage: targetLanguage,
+        model: CONFIG.NOVA.MODEL_ID
+      };
+
+      Logger.debug(`Translating content (${textToTranslate.length} chars) from ${sourceLanguage} to ${targetLanguage}`, null, 'APIManager');
+
+      const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.TRANSLATE, requestData);
       
-      // Map individual texts to their translations
-      originalTexts.forEach(originalText => {
-        // Try to find the translation for this specific text
-        const translation = response.translations[originalText] || 
-                           response.translations[originalText.trim()] ||
-                           originalText; // Fallback to original if not found
-        combinedTranslations[originalText] = translation;
-      });
+      // Validate response
+      if (!response || !response.translations) {
+        throw new Error('Invalid translation response format');
+      }
       
-      return { success: true, translations: combinedTranslations };
+      // If we sent an array, we need to split the response back
+      if (Array.isArray(content) && response.translations) {
+        const combinedTranslations = {};
+        const originalTexts = content;
+        
+        // Map individual texts to their translations
+        originalTexts.forEach(originalText => {
+          // Try to find the translation for this specific text
+          const translation = response.translations[originalText] || 
+                             response.translations[originalText.trim()] ||
+                             originalText; // Fallback to original if not found
+          combinedTranslations[originalText] = translation;
+        });
+        
+        return { success: true, translations: combinedTranslations };
+      }
+      
+      Logger.debug(`Translation completed successfully`, null, 'APIManager');
+      return { success: true, translations: response.translations || {}, translatedText: response.translations?.[content] || content };
+    } catch (error) {
+      Logger.error('Translation failed', error, 'APIManager');
+      throw error;
     }
-    
-    return { success: true, translations: response.translations || {}, translatedText: response.translations?.[content] || content };
   }
 
   /**
@@ -1084,42 +1168,68 @@ class APIManager {
    * @returns {Promise<Object>} Summary result
    */
   async generateSummary(content, targetLanguage, pageUrl) {
-    const requestData = {
-      action: 'summarize',
-      content,
-      targetLanguage,
-      pageUrl,
-      model: CONFIG.NOVA.MODEL_ID
-    };
-
-    const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.SUMMARIZE, requestData);
-    return response.summary || {
-      title: 'Summary not available',
-      points: [
-        { emoji: '📄', text: 'Unable to generate summary at this time.' }
-      ]
-    };
-  }
-
-  /**
-   * Detect language of content
-   * @param {string} content - Content to analyze
-   * @returns {Promise<string>} Detected language
-   */
-  async detectLanguage(content) {
-    const requestData = {
-      action: 'detect-language',
-      content: content.substring(0, 1000) // Limit content for detection
-    };
-
     try {
-      const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.DETECT_LANGUAGE, requestData);
-      return response.detectedLanguage || 'Unknown';
+      // Validate input
+      if (!content || typeof content !== 'string') {
+        throw new Error('Invalid content: must be a non-empty string');
+      }
+      if (!targetLanguage) {
+        throw new Error('Target language is required');
+      }
+
+      // Sanitize content
+      const sanitizedContent = content.trim();
+      if (sanitizedContent.length === 0) {
+        throw new Error('Content cannot be empty after trimming');
+      }
+
+      // Limit content size for summary
+      const maxContentLength = 100000; // 100KB limit for summaries
+      let contentToSummarize = sanitizedContent;
+      if (sanitizedContent.length > maxContentLength) {
+        Logger.warn(`Content too large for summary (${sanitizedContent.length} chars), truncating to ${maxContentLength}`, 'APIManager');
+        contentToSummarize = sanitizedContent.substring(0, maxContentLength) + '...';
+      }
+
+      const requestData = {
+        action: 'summarize',
+        content: contentToSummarize,
+        targetLanguage: targetLanguage,
+        pageUrl: pageUrl || '',
+        model: CONFIG.NOVA.MODEL_ID
+      };
+
+      Logger.debug(`Generating summary for content (${contentToSummarize.length} chars) in ${targetLanguage}`, null, 'APIManager');
+
+      const response = await this.makeAPICall(CONFIG.API.ENDPOINTS.SUMMARIZE, requestData);
+      
+      // Validate response
+      if (!response || !response.summary) {
+        Logger.warn('Invalid summary response, returning fallback', null, 'APIManager');
+        return {
+          title: 'Summary not available',
+          points: [
+            { emoji: '📄', text: 'Unable to generate summary at this time.' }
+          ]
+        };
+      }
+
+      Logger.debug(`Summary generated successfully`, null, 'APIManager');
+      return response.summary;
     } catch (error) {
-      Logger.error('Language detection failed', error, 'APIManager');
-      return 'Unknown';
+      Logger.error('Summary generation failed', error, 'APIManager');
+      // Return fallback summary instead of throwing
+      return {
+        title: 'Summary Error',
+        points: [
+          { emoji: '⚠️', text: 'Failed to generate summary. Please try again.' },
+          { emoji: '🔄', text: 'Error: ' + error.message }
+        ]
+      };
     }
   }
+
+
 }
 
 // =============================================================================
@@ -1191,6 +1301,10 @@ class MessageRouter {
 
         case CONFIG.MESSAGES.CONTENT_SCRIPT_ERROR:
           this.handleContentScriptError(message, sender);
+          break;
+
+        case 'contentScriptReady':
+          this.handleContentScriptReady(message, sender);
           break;
 
         case CONFIG.MESSAGES.UPDATE_SUMMARY:
@@ -1672,6 +1786,20 @@ class MessageRouter {
   }
 
   /**
+   * Handle content script ready notification
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @private
+   */
+  handleContentScriptReady(message, sender) {
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      this.stateManager.markTabActive(tabId);
+      Logger.info(`Content script ready in tab ${tabId}`, null, 'MessageRouter');
+    }
+  }
+
+  /**
    * Send message to content script
    * @param {number} tabId - Tab ID
    * @param {Object} message - Message to send
@@ -1682,16 +1810,32 @@ class MessageRouter {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Content script communication timeout'));
-      }, 10000);
+      }, CONFIG.COMMUNICATION.CONTENT_SCRIPT_TIMEOUT);
 
-      chrome.tabs.sendMessage(tabId, message, (response) => {
-        clearTimeout(timeout);
-
+      // Check if tab exists and is accessible
+      chrome.tabs.get(tabId, (tab) => {
         if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(response || { success: true });
+          clearTimeout(timeout);
+          reject(new Error(`Tab ${tabId} not accessible: ${chrome.runtime.lastError.message}`));
+          return;
         }
+
+        // Send message to content script
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          clearTimeout(timeout);
+
+          if (chrome.runtime.lastError) {
+            // Handle specific content script errors
+            const errorMsg = chrome.runtime.lastError.message;
+            if (errorMsg.includes('Could not establish connection')) {
+              reject(new Error(`Content script not ready in tab ${tabId}. Please refresh the page.`));
+            } else {
+              reject(new Error(errorMsg));
+            }
+          } else {
+            resolve(response || { success: true });
+          }
+        });
       });
     });
   }

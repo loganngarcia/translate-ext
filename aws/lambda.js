@@ -72,24 +72,7 @@ const summaryTool = {
   }
 };
 
-const languageDetectionTool = {
-  toolSpec: {
-    name: "detect_language",
-    description: "Detect the language of the provided text",
-    inputSchema: {
-      json: {
-        type: "object",
-        properties: {
-          detectedLanguage: {
-            type: "string",
-            description: "The name of the detected language in English"
-          }
-        },
-        required: ["detectedLanguage"]
-      }
-    }
-  }
-};
+
 
 // Main Lambda handler
 exports.handler = async (event) => {
@@ -138,10 +121,7 @@ exports.handler = async (event) => {
         result = await handleSummarization(content, targetLanguage, pageUrl);
         break;
         
-      case 'detect-language':
-        result = await handleLanguageDetection(content);
-        break;
-        
+
       default:
         return createErrorResponse(`Unknown action: ${action}`, 400, headers);
     }
@@ -176,7 +156,25 @@ async function handleTranslation(content, sourceLanguage, targetLanguage) {
     
     try {
       const response = await invokeNovaModel({
-        system: `You are a professional translator. When given text to translate, use the provide_translation tool to return translations. Translate text while preserving meaning, tone, and context. If the text is already in ${targetLanguage}, return it unchanged. Split the text into logical segments (sentences or phrases) and provide translations for each segment.`,
+        system: `You are a professional translator specializing in accurate, contextual translations. You MUST translate the provided text into ${targetLanguage} and ONLY ${targetLanguage}. 
+
+CRITICAL LANGUAGE REQUIREMENT: The target language is "${targetLanguage}". Every single translation you provide MUST be written entirely in ${targetLanguage}. Do not mix languages or provide translations in any other language.
+
+INSTRUCTIONS:
+- Use the provide_translation tool to return all translations
+- If the source text is already in ${targetLanguage}, return it unchanged
+- Split text into logical segments (sentences or phrases) for better accuracy
+- Preserve the original meaning, tone, and cultural context
+- Maintain formatting and structure where possible
+- For technical terms, use standard ${targetLanguage} equivalents
+- If uncertain about a term, choose the most commonly accepted ${targetLanguage} translation
+
+QUALITY STANDARDS:
+- Translations must sound natural to native ${targetLanguage} speakers
+- Maintain consistency in terminology throughout the text
+- Preserve the original text's style and register (formal/informal)
+
+Remember: ALL output must be in ${targetLanguage}. No exceptions.`,
         messages: [
           {
             role: 'user',
@@ -220,7 +218,26 @@ async function handleSummarization(content, targetLanguage, pageUrl) {
   
   try {
     const response = await invokeNovaModel({
-      system: `You are an AI assistant that creates concise, helpful summaries of web content. Use the provide_summary tool to return a structured summary with 3-5 key points, each with an appropriate emoji. Write in ${targetLanguage}.`,
+      system: `You are an AI assistant that creates concise, helpful summaries of web content. You MUST write entirely in ${targetLanguage} and ONLY ${targetLanguage}.
+
+CRITICAL LANGUAGE REQUIREMENT: The target language is "${targetLanguage}". Every word in your summary MUST be written in ${targetLanguage}. Do not use any other language.
+
+TASK REQUIREMENTS:
+- Use the provide_summary tool to return a structured summary
+- Create exactly 3-5 key points that capture the most important information
+- Each point must include an appropriate emoji that represents the content
+- Write all text (title and points) exclusively in ${targetLanguage}
+- Make the summary accessible to native ${targetLanguage} speakers
+- Use natural, fluent ${targetLanguage} expressions and idioms where appropriate
+
+CONTENT GUIDELINES:
+- Focus on actionable insights and key takeaways
+- Prioritize information that would be most valuable to users
+- Keep each point concise but informative (1-2 sentences maximum)
+- Ensure emojis are culturally appropriate and enhance understanding
+- Use formal or informal tone appropriate to ${targetLanguage} conventions
+
+Remember: Every single word in the title and summary points must be in ${targetLanguage}. No exceptions.`,
       messages: [
         {
           role: 'user',
@@ -269,46 +286,7 @@ async function handleSummarization(content, targetLanguage, pageUrl) {
   }
 }
 
-async function handleLanguageDetection(content) {
-  const prompt = `Detect the language of this text: "${content.substring(0, 500)}"`;
-  
-  try {
-    const response = await invokeNovaModel({
-      system: 'You are a language detection expert. Use the detect_language tool to return the detected language name in English.',
-      messages: [
-        {
-          role: 'user',
-          content: [{ text: prompt }]
-        }
-      ],
-      toolConfig: {
-        tools: [languageDetectionTool],
-        toolChoice: {
-          tool: {
-            name: "detect_language"
-          }
-        }
-      }
-    });
 
-    const toolUse = extractToolUse(response);
-    
-    if (toolUse && toolUse.name === 'detect_language') {
-      try {
-        const functionResult = toolUse.input;
-        return { detectedLanguage: functionResult.detectedLanguage };
-      } catch (parseError) {
-        console.error('Failed to parse language detection result:', parseError);
-      }
-    }
-    
-    return { detectedLanguage: 'Unknown' };
-    
-  } catch (error) {
-    console.error('Language detection error:', error);
-    return { detectedLanguage: 'Unknown' };
-  }
-}
 
 // Core function to invoke Nova-lite model via Bedrock
 async function invokeNovaModel({ system, messages, toolConfig }) {
