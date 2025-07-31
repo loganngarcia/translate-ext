@@ -1206,12 +1206,7 @@ class APIManager {
       // Validate response
       if (!response || !response.summary) {
         Logger.warn('Invalid summary response, returning fallback', null, 'APIManager');
-        return {
-          title: 'Summary not available',
-          points: [
-            { emoji: '📄', text: 'Unable to generate summary at this time.' }
-          ]
-        };
+        return this.createLocalizedFallback(targetLanguage, 'unavailable');
       }
 
       Logger.debug(`Summary generated successfully`, null, 'APIManager');
@@ -1219,14 +1214,71 @@ class APIManager {
     } catch (error) {
       Logger.error('Summary generation failed', error, 'APIManager');
       // Return fallback summary instead of throwing
-      return {
-        title: 'Summary Error',
-        points: [
-          { emoji: '⚠️', text: 'Failed to generate summary. Please try again.' },
-          { emoji: '🔄', text: 'Error: ' + error.message }
-        ]
-      };
+      return this.createLocalizedFallback(targetLanguage, 'error');
     }
+  }
+
+  /**
+   * Create localized fallback summary based on target language
+   * @param {string} targetLanguage - Target language
+   * @param {string} type - Type of fallback ('unavailable', 'error', 'loading')
+   * @returns {Object} Localized fallback summary
+   * @private
+   */
+  createLocalizedFallback(targetLanguage, type) {
+    const fallbackMessages = {
+      'English': {
+        unavailable: { title: 'Summary Unavailable', text: 'Unable to generate summary at this time.', retry: 'Please try the translate button again' },
+        error: { title: 'Summary Error', text: 'Failed to generate summary. Please try again.', retry: 'Please try the translate button again' },
+        loading: { title: 'Loading Summary', text: 'Summary will be available shortly', retry: 'Please try the translate button if summary doesn\'t appear' }
+      },
+      'Spanish / Español': {
+        unavailable: { title: 'Resumen No Disponible', text: 'No se puede generar el resumen en este momento.', retry: 'Presiona el botón traducir de nuevo' },
+        error: { title: 'Error de Resumen', text: 'Error al generar el resumen. Inténtalo de nuevo.', retry: 'Presiona el botón traducir de nuevo' },
+        loading: { title: 'Cargando Resumen', text: 'El resumen estará disponible en breve', retry: 'Presiona el botón traducir si no aparece el resumen' }
+      },
+      'French / Français': {
+        unavailable: { title: 'Résumé Indisponible', text: 'Impossible de générer le résumé pour le moment.', retry: 'Veuillez réessayer le bouton traduire' },
+        error: { title: 'Erreur de Résumé', text: 'Échec de la génération du résumé. Veuillez réessayer.', retry: 'Veuillez réessayer le bouton traduire' },
+        loading: { title: 'Chargement du Résumé', text: 'Le résumé sera disponible sous peu', retry: 'Essayez le bouton traduire si le résumé n\'apparaît pas' }
+      },
+      'German / Deutsch': {
+        unavailable: { title: 'Zusammenfassung Nicht Verfügbar', text: 'Zusammenfassung kann derzeit nicht erstellt werden.', retry: 'Bitte versuchen Sie die Übersetzungsschaltfläche erneut' },
+        error: { title: 'Zusammenfassungsfehler', text: 'Fehler beim Erstellen der Zusammenfassung. Bitte versuchen Sie es erneut.', retry: 'Bitte versuchen Sie die Übersetzungsschaltfläche erneut' },
+        loading: { title: 'Zusammenfassung Wird Geladen', text: 'Die Zusammenfassung wird in Kürze verfügbar sein', retry: 'Versuchen Sie die Übersetzungsschaltfläche, falls die Zusammenfassung nicht erscheint' }
+      },
+      'Chinese (Simplified) / 中文(简体)': {
+        unavailable: { title: '摘要不可用', text: '目前无法生成摘要。', retry: '请重新尝试翻译按钮' },
+        error: { title: '摘要错误', text: '生成摘要失败。请重试。', retry: '请重新尝试翻译按钮' },
+        loading: { title: '正在加载摘要', text: '摘要将很快可用', retry: '如果摘要没有出现，请尝试翻译按钮' }
+      },
+      'Chinese (Traditional) / 中文(繁體)': {
+        unavailable: { title: '摘要不可用', text: '目前無法生成摘要。', retry: '請重新嘗試翻譯按鈕' },
+        error: { title: '摘要錯誤', text: '生成摘要失敗。請重試。', retry: '請重新嘗試翻譯按鈕' },
+        loading: { title: '正在載入摘要', text: '摘要將很快可用', retry: '如果摘要沒有出現，請嘗試翻譯按鈕' }
+      },
+      'Japanese / 日本語': {
+        unavailable: { title: '要約が利用できません', text: '現在要約を生成できません。', retry: '翻訳ボタンをもう一度試してください' },
+        error: { title: '要約エラー', text: '要約の生成に失敗しました。もう一度お試しください。', retry: '翻訳ボタンをもう一度試してください' },
+        loading: { title: '要約を読み込み中', text: '要約はまもなく利用可能になります', retry: '要約が表示されない場合は翻訳ボタンをお試しください' }
+      },
+      'Korean / 한국어': {
+        unavailable: { title: '요약 사용 불가', text: '현재 요약을 생성할 수 없습니다.', retry: '번역 버튼을 다시 시도해 주세요' },
+        error: { title: '요약 오류', text: '요약 생성에 실패했습니다. 다시 시도해 주세요.', retry: '번역 버튼을 다시 시도해 주세요' },
+        loading: { title: '요약 로딩 중', text: '요약이 곧 제공될 예정입니다', retry: '요약이 나타나지 않으면 번역 버튼을 시도해 보세요' }
+      }
+    };
+
+    const messages = fallbackMessages[targetLanguage] || fallbackMessages['English'];
+    const message = messages[type] || messages['error'];
+
+    return {
+      title: message.title,
+      points: [
+        { emoji: type === 'error' ? '⚠️' : type === 'loading' ? '⏱️' : '📄', text: message.text },
+        { emoji: '🔄', text: message.retry || 'Please try the translate button again' }
+      ]
+    };
   }
 
 
@@ -1296,23 +1348,25 @@ class MessageRouter {
           break;
 
         case CONFIG.MESSAGES.PAGE_CONTENT_EXTRACTED:
-          this.handlePageContentExtracted(message, sender);
+          this.handlePageContentExtracted(message, sender, sendResponse);
           break;
 
         case CONFIG.MESSAGES.CONTENT_SCRIPT_ERROR:
-          this.handleContentScriptError(message, sender);
+          this.handleContentScriptError(message, sender, sendResponse);
           break;
 
         case 'contentScriptReady':
-          this.handleContentScriptReady(message, sender);
+          this.handleContentScriptReady(message, sender, sendResponse);
           break;
 
         case CONFIG.MESSAGES.UPDATE_SUMMARY:
           this.forwardToSidepanel(message);
+          if (sendResponse) sendResponse({ success: true });
           break;
 
         case CONFIG.MESSAGES.SUMMARY_UPDATE:
           this.forwardToSidepanel(message);
+          if (sendResponse) sendResponse({ success: true });
           break;
 
         case CONFIG.MESSAGES.START_CONTINUOUS_TRANSLATION:
@@ -1328,15 +1382,15 @@ class MessageRouter {
           break;
 
         case CONFIG.MESSAGES.SIDEPANEL_CLOSED:
-          this.handleSidepanelClosed(message, sender);
+          this.handleSidepanelClosed(message, sender, sendResponse);
           break;
 
         case CONFIG.MESSAGES.TRANSLATION_STARTED:
-          this.handleTranslationStarted(message, sender);
+          this.handleTranslationStarted(message, sender, sendResponse);
           break;
 
         case CONFIG.MESSAGES.TRANSLATION_COMPLETE:
-          this.handleTranslationComplete(message, sender);
+          this.handleTranslationComplete(message, sender, sendResponse);
           break;
 
         case CONFIG.MESSAGES.GENERATE_SUMMARY:
@@ -1345,10 +1399,12 @@ class MessageRouter {
 
         case CONFIG.MESSAGES.STREAM_TRANSLATION_CHUNK:
           this.forwardToSidepanel(message);
+          if (sendResponse) sendResponse({ success: true });
           break;
 
         case CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK:
           this.forwardToSidepanel(message);
+          if (sendResponse) sendResponse({ success: true });
           break;
 
         case CONFIG.MESSAGES.CLEAR_CACHE:
@@ -1625,7 +1681,7 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handlePageContentExtracted(message, sender) {
+  handlePageContentExtracted(message, sender, sendResponse) {
     const tabId = sender.tab?.id;
     const content = message.content;
     
@@ -1645,6 +1701,9 @@ class MessageRouter {
       tabId,
       autoSummaryTriggered: true
     });
+
+    // Acknowledge the notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**
@@ -1656,8 +1715,8 @@ class MessageRouter {
   async autoGenerateSummary(content, tabId) {
     try {
       // Get user's preferred language or default to English
-      const userPrefs = await chrome.storage.sync.get(['preferredLanguage']);
-      const targetLanguage = userPrefs.preferredLanguage || 'English';
+      const userPrefs = await chrome.storage.sync.get(['targetLanguage']);
+      const targetLanguage = userPrefs.targetLanguage || 'English';
       
       const { url, text, title } = content;
       
@@ -1724,8 +1783,8 @@ class MessageRouter {
       Logger.error('Auto-summary generation failed', error, 'MessageRouter');
       
       // Clean up ongoing summaries tracking
-      const userPrefs = await chrome.storage.sync.get(['preferredLanguage']);
-      const targetLanguage = userPrefs.preferredLanguage || 'English';
+      const userPrefs = await chrome.storage.sync.get(['targetLanguage']);
+      const targetLanguage = userPrefs.targetLanguage || 'English';
       const summaryKey = `${content.url}:${targetLanguage}`;
       this.ongoingSummaries.delete(summaryKey);
       
@@ -1733,13 +1792,7 @@ class MessageRouter {
       this.forwardToSidepanel({
         action: CONFIG.MESSAGES.SUMMARY_UPDATE,
         tabId,
-        summary: {
-          title: content.title || 'Page Summary',
-          points: [
-            { emoji: '⏱️', text: 'Summary will be available shortly' },
-            { emoji: '🔄', text: 'Please try the translate button if summary doesn\'t appear' }
-          ]
-        },
+        summary: this.apiManager.createLocalizedFallback(targetLanguage, 'loading'),
         fromCache: false,
         error: true
       });
@@ -1752,7 +1805,7 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handleContentScriptError(message, sender) {
+  handleContentScriptError(message, sender, sendResponse) {
     Logger.error('Content script error', message, 'MessageRouter');
 
     // Clear any ongoing translation state
@@ -1783,6 +1836,9 @@ class MessageRouter {
       // For minor errors, just log and don't bother the user
       Logger.info('Non-critical content script error handled silently', 'MessageRouter');
     }
+
+    // Acknowledge the error notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**
@@ -1791,12 +1847,15 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handleContentScriptReady(message, sender) {
+  handleContentScriptReady(message, sender, sendResponse) {
     const tabId = sender.tab?.id;
     if (tabId) {
       this.stateManager.markTabActive(tabId);
       Logger.info(`Content script ready in tab ${tabId}`, null, 'MessageRouter');
     }
+
+    // Acknowledge the ready notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**
@@ -1841,6 +1900,40 @@ class MessageRouter {
   }
 
   /**
+   * Send message to content script with retry logic
+   * @param {number} tabId - Tab ID
+   * @param {Object} message - Message to send
+   * @param {number} maxRetries - Maximum number of retries
+   * @returns {Promise<Object>} Response from content script
+   * @private
+   */
+  async sendToContentScriptWithRetry(tabId, message, maxRetries = 3) {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await this.sendToContentScript(tabId, message);
+        return response;
+      } catch (error) {
+        lastError = error;
+        Logger.warn(`Content script communication attempt ${attempt}/${maxRetries} failed:`, error.message, 'MessageRouter');
+        
+        // Don't retry for certain types of errors
+        if (error.message.includes('Tab') && error.message.includes('not accessible')) {
+          throw error; // Tab doesn't exist, no point retrying
+        }
+        
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    
+    throw lastError || new Error('All communication attempts failed');
+  }
+
+  /**
    * Forward message to sidepanel
    * @param {Object} message - Message to forward
    * @private
@@ -1873,16 +1966,28 @@ class MessageRouter {
       // Enable continuous translation in state
       this.stateManager.enableContinuousTranslation(tabId, sourceLanguage, targetLanguage);
 
-      // Send message to content script
-      const response = await this.sendToContentScript(tabId, {
-        action: CONFIG.MESSAGES.START_CONTINUOUS_TRANSLATION,
-        sourceLanguage,
-        targetLanguage
-      });
+      // Try to send message to content script with retries
+      let response;
+      try {
+        response = await this.sendToContentScriptWithRetry(tabId, {
+          action: CONFIG.MESSAGES.START_CONTINUOUS_TRANSLATION,
+          sourceLanguage,
+          targetLanguage
+        }, 3);
+      } catch (error) {
+        // If content script is not ready, provide helpful error message
+        if (error.message.includes('Content script not ready') || 
+            error.message.includes('Could not establish connection')) {
+          throw new Error('Content script not ready in tab ' + tabId + '. Please refresh the page.');
+        }
+        throw error;
+      }
 
       sendResponse(response);
     } catch (error) {
       Logger.error('Failed to start continuous translation', error, 'MessageRouter');
+      // Disable continuous translation since it failed to start
+      this.stateManager.disableContinuousTranslation(tabId);
       sendResponse({ success: false, error: error.message });
     }
   }
@@ -1902,15 +2007,27 @@ class MessageRouter {
         throw new Error('Missing required parameter: tabId');
       }
 
-      // Disable continuous translation in state
+      // Disable continuous translation in state first
       this.stateManager.disableContinuousTranslation(tabId);
 
-      // Send message to content script
-      const response = await this.sendToContentScript(tabId, {
-        action: CONFIG.MESSAGES.STOP_CONTINUOUS_TRANSLATION
-      });
-
-      sendResponse(response);
+      // Try to send message to content script with retries
+      try {
+        const response = await this.sendToContentScriptWithRetry(tabId, {
+          action: CONFIG.MESSAGES.STOP_CONTINUOUS_TRANSLATION
+        }, 2); // Fewer retries for stop operation
+        
+        sendResponse(response);
+      } catch (error) {
+        // If content script is not accessible, that's fine - translation is already disabled in state
+        if (error.message.includes('Content script not ready') || 
+            error.message.includes('Could not establish connection') ||
+            error.message.includes('not accessible')) {
+          Logger.info('Content script not accessible for stop command - state already cleared', 'MessageRouter');
+          sendResponse({ success: true, message: 'Continuous translation stopped (content script not accessible)' });
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
       Logger.error('Failed to stop continuous translation', error, 'MessageRouter');
       sendResponse({ success: false, error: error.message });
@@ -1935,14 +2052,23 @@ class MessageRouter {
       // Update continuous translation language in state
       this.stateManager.updateContinuousLanguage(tabId, sourceLanguage, targetLanguage);
 
-      // Send message to content script
-      const response = await this.sendToContentScript(tabId, {
-        action: CONFIG.MESSAGES.UPDATE_CONTINUOUS_LANGUAGE,
-        sourceLanguage,
-        targetLanguage
-      });
-
-      sendResponse(response);
+      // Try to send message to content script with retries
+      try {
+        const response = await this.sendToContentScriptWithRetry(tabId, {
+          action: CONFIG.MESSAGES.UPDATE_CONTINUOUS_LANGUAGE,
+          sourceLanguage,
+          targetLanguage
+        }, 3);
+        
+        sendResponse(response);
+      } catch (error) {
+        // If content script is not ready, provide helpful error message
+        if (error.message.includes('Content script not ready') || 
+            error.message.includes('Could not establish connection')) {
+          throw new Error('Content script not ready in tab ' + tabId + '. Please refresh the page.');
+        }
+        throw error;
+      }
     } catch (error) {
       Logger.error('Failed to update continuous translation language', error, 'MessageRouter');
       sendResponse({ success: false, error: error.message });
@@ -1955,7 +2081,7 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handleSidepanelClosed(message, sender) {
+  handleSidepanelClosed(message, sender, sendResponse) {
     const { tabId } = message;
     
     if (tabId) {
@@ -1971,6 +2097,9 @@ class MessageRouter {
       
       Logger.info(`Continuous translation stopped due to sidepanel closure for tab ${tabId}`, 'MessageRouter');
     }
+
+    // Acknowledge the sidepanel closed notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**
@@ -1979,7 +2108,7 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handleTranslationStarted(message, sender) {
+  handleTranslationStarted(message, sender, sendResponse) {
     if (sender.tab?.id) {
       this.stateManager.setTranslationState(sender.tab.id, {
         isTranslating: true,
@@ -1990,6 +2119,9 @@ class MessageRouter {
     // Forward to sidepanel
     this.forwardToSidepanel(message);
     Logger.debug('Translation started notification handled', null, 'MessageRouter');
+
+    // Acknowledge the translation started notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**
@@ -1998,7 +2130,7 @@ class MessageRouter {
    * @param {Object} sender - Sender information
    * @private
    */
-  handleTranslationComplete(message, sender) {
+  handleTranslationComplete(message, sender, sendResponse) {
     if (sender.tab?.id) {
       this.stateManager.setTranslationState(sender.tab.id, {
         isTranslating: false,
@@ -2009,6 +2141,9 @@ class MessageRouter {
     // Forward to sidepanel
     this.forwardToSidepanel(message);
     Logger.debug('Translation complete notification handled', null, 'MessageRouter');
+
+    // Acknowledge the translation complete notification
+    if (sendResponse) sendResponse({ success: true });
   }
 
   /**

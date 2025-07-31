@@ -26,13 +26,17 @@ function initializeContentScript() {
     extractPageContent();
     
     // Notify background script that content script is ready
-    chrome.runtime.sendMessage({
-      action: 'contentScriptReady',
-      url: window.location.href,
-      timestamp: Date.now()
-    }).catch(error => {
-      console.warn('Content script: Failed to notify background script:', error);
-    });
+    if (isExtensionContextValid()) {
+      sendMessageWithRetry({
+        action: 'contentScriptReady',
+        url: window.location.href,
+        timestamp: Date.now()
+      }, 2).catch(error => {
+        if (!error.message.includes('Extension context invalidated')) {
+          console.warn('Content script: Failed to notify background script:', error);
+        }
+      });
+    }
     
     console.log('Content script initialized successfully');
   } catch (error) {
@@ -119,10 +123,16 @@ function extractPageContent() {
   };
   
   // Send content to sidepanel for analysis
-  chrome.runtime.sendMessage({
-    action: 'pageContentExtracted',
-    content: pageContent
-  });
+  if (isExtensionContextValid()) {
+    sendMessageWithRetry({
+      action: 'pageContentExtracted',
+      content: pageContent
+    }, 2).catch(error => {
+      if (!error.message.includes('Extension context invalidated')) {
+        console.warn('Failed to send page content to background:', error);
+      }
+    });
+  }
   
   return pageContent;
 }
@@ -195,11 +205,13 @@ async function handleTranslatePage(message, sendResponse) {
     
     try {
       // Notify sidepanel that translation has started
-      chrome.runtime.sendMessage({
-        action: 'translationStarted',
-        sourceLanguage,
-        targetLanguage
-      }).catch(() => {}); // Ignore if sidepanel not open
+      if (isExtensionContextValid()) {
+        sendMessageWithRetry({
+          action: 'translationStarted',
+          sourceLanguage,
+          targetLanguage
+        }, 1).catch(() => {}); // Ignore if sidepanel not open
+      }
       
       // Store current translation state
       currentTranslation = { sourceLanguage, targetLanguage, isActive: true };
@@ -236,10 +248,12 @@ async function handleTranslatePage(message, sendResponse) {
       clearTimeout(translationTimeout);
       
       // Notify sidepanel that translation completed
-      chrome.runtime.sendMessage({
-        action: 'translationComplete',
-        message: 'Page translation completed successfully'
-      }).catch(() => {}); // Ignore if sidepanel not open
+      if (isExtensionContextValid()) {
+        sendMessageWithRetry({
+          action: 'translationComplete',
+          message: 'Page translation completed successfully'
+        }, 1).catch(() => {}); // Ignore if sidepanel not open
+      }
       
       console.log('✅ Streaming translation completed');
       sendResponse({ success: true });
@@ -254,10 +268,12 @@ async function handleTranslatePage(message, sendResponse) {
     currentTranslation = null;
     
     // Notify sidepanel of error
-    chrome.runtime.sendMessage({
-      action: 'translationError',
-      error: error.message
-    }).catch(() => {}); // Ignore if sidepanel not open
+    if (isExtensionContextValid()) {
+      sendMessageWithRetry({
+        action: 'translationError',
+        error: error.message
+      }, 1).catch(() => {}); // Ignore if sidepanel not open
+    }
     
     sendResponse({ success: false, error: error.message });
   }
@@ -425,12 +441,16 @@ function sanitizeText(text) {
 function handleError(error, context) {
   console.error(`Content script error in ${context}:`, error);
   
-  chrome.runtime.sendMessage({
-    action: 'contentScriptError',
-    error: error.message,
-    context: context,
-    url: window.location.href
-  });
+  if (isExtensionContextValid()) {
+    sendMessageWithRetry({
+      action: 'contentScriptError',
+      error: error.message,
+      context: context,
+      url: window.location.href
+    }, 2).catch(() => {
+      console.warn('Failed to report error to background script');
+    });
+  }
 }
 
 // =============================================================================
@@ -518,13 +538,18 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
   const combinedText = textsToTranslate.join('\n---SEPARATOR---\n');
   
   try {
-    // Send to background for translation (no visual feedback)
-    const response = await chrome.runtime.sendMessage({
+    // Check if Chrome runtime is still available
+    if (!chrome.runtime?.id) {
+      throw new Error('Extension context invalidated');
+    }
+    
+    // Send to background for translation with timeout and retry logic
+    const response = await sendMessageWithRetry({
       action: 'translateText',
       texts: textsToTranslate, // Send array of texts instead of combined string
       sourceLanguage,
       targetLanguage
-    });
+    }, 3); // 3 retries
     
     if (response.success && response.translations) {
       // Apply translations using the translations object
@@ -545,6 +570,17 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
     }
     
   } catch (error) {
+    // Handle different types of errors
+    if (error.message.includes('Extension context invalidated') || 
+        error.message.includes('Receiving end does not exist') ||
+        error.message.includes('message channel closed')) {
+      console.warn(`⚠️ Extension context lost during batch ${batchNum} - stopping translation gracefully`);
+      // Stop the current translation cleanly
+      currentTranslation = null;
+      continuousTranslation.enabled = false;
+      return; // Don't log as error since this is expected during extension reload
+    }
+    
     console.error(`❌ Batch ${batchNum} failed:`, error);
   }
 }
@@ -596,6 +632,68 @@ function shouldTranslateText(text) {
  */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Send message to background with retry logic and timeout
+ * @param {Object} message - Message to send
+ * @param {number} maxRetries - Maximum number of retries
+ * @returns {Promise} Promise that resolves with response
+ */
+async function sendMessageWithRetry(message, maxRetries = 3) {
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Check if Chrome runtime is still available
+      if (!chrome.runtime?.id) {
+        throw new Error('Extension context invalidated');
+      }
+      
+      // Send message with Chrome's built-in reliability
+      const response = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response || { success: false, error: 'No response received' });
+          }
+        });
+      });
+      
+      return response;
+      
+    } catch (error) {
+      lastError = error;
+      console.warn(`Message attempt ${attempt}/${maxRetries} failed:`, error.message);
+      
+      // Don't retry for context invalidation errors
+      if (error.message.includes('Extension context invalidated') || 
+          error.message.includes('Receiving end does not exist') ||
+          error.message.includes('message channel closed')) {
+        throw error;
+      }
+      
+      // Wait before retry (exponential backoff)
+      if (attempt < maxRetries) {
+        await sleep(1000 * attempt);
+      }
+    }
+  }
+  
+  throw lastError || new Error('All message attempts failed');
+}
+
+/**
+ * Check if the extension context is still valid
+ * @returns {boolean} True if context is valid
+ */
+function isExtensionContextValid() {
+  try {
+    return !!(chrome && chrome.runtime && chrome.runtime.id);
+  } catch (error) {
+    return false;
+  }
 }
 
 /**

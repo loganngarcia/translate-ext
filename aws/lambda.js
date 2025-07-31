@@ -214,13 +214,29 @@ Remember: ALL output must be in ${targetLanguage}. No exceptions.`,
 }
 
 async function handleSummarization(content, targetLanguage, pageUrl) {
+  console.log(`🎯 Summary generation - Target Language: "${targetLanguage}" for URL: ${pageUrl}`);
   const prompt = createSummarizationPrompt(content, targetLanguage, pageUrl);
   
   try {
     const response = await invokeNovaModel({
       system: `You are an AI assistant that creates concise, helpful summaries of web content. You MUST write entirely in ${targetLanguage} and ONLY ${targetLanguage}.
 
-CRITICAL LANGUAGE REQUIREMENT: The target language is "${targetLanguage}". Every word in your summary MUST be written in ${targetLanguage}. Do not use any other language.
+🚨 CRITICAL LANGUAGE REQUIREMENT 🚨
+TARGET LANGUAGE: ${targetLanguage}
+YOU MUST WRITE EVERYTHING IN ${targetLanguage} ONLY!
+
+🎯 TITLE LANGUAGE REQUIREMENT 🎯
+THE SUMMARY TITLE MUST BE WRITTEN ENTIRELY IN ${targetLanguage}!
+- NO mixed languages in the title  
+- The title should be a natural ${targetLanguage} phrase that summarizes the content
+- Use ${targetLanguage} grammar and sentence structure for the title
+
+LANGUAGE RULES:
+- Every single word in the summary title must be in ${targetLanguage}
+- Every single word in all bullet points must be in ${targetLanguage}  
+- ONLY use ${targetLanguage} for all text content
+- If you don't know how to say something in ${targetLanguage}, find an equivalent phrase
+- Native ${targetLanguage} speakers should understand everything perfectly
 
 TASK REQUIREMENTS:
 - Use the provide_summary tool to return a structured summary
@@ -237,7 +253,7 @@ CONTENT GUIDELINES:
 - Ensure emojis are culturally appropriate and enhance understanding
 - Use formal or informal tone appropriate to ${targetLanguage} conventions
 
-Remember: Every single word in the title and summary points must be in ${targetLanguage}. No exceptions.`,
+🔥 FINAL REMINDER: The user selected ${targetLanguage} as their language. They expect to read BOTH the title AND bullet points in ${targetLanguage}, not English or any other language. Honor their language choice completely!`,
       messages: [
         {
           role: 'user',
@@ -260,6 +276,9 @@ Remember: Every single word in the title and summary points must be in ${targetL
       try {
         const functionResult = toolUse.input;
         
+        // Log what the AI generated for debugging
+        console.log(`🤖 AI Generated Summary in "${targetLanguage}":`, JSON.stringify(functionResult, null, 2));
+        
         // Validate summary structure
         if (functionResult.title && Array.isArray(functionResult.points)) {
           return { summary: functionResult };
@@ -269,15 +288,9 @@ Remember: Every single word in the title and summary points must be in ${targetL
       }
     }
     
-    // Fallback summary if parsing fails
+    // Fallback summary if parsing fails - localized to target language
     return {
-      summary: {
-        title: `Summary of ${extractDomainFromUrl(pageUrl)}`,
-        points: [
-          { emoji: '📄', text: 'Content summary is currently unavailable.' },
-          { emoji: '🔄', text: 'Please try again in a moment.' }
-        ]
-      }
+      summary: createLocalizedFallbackSummary(targetLanguage, pageUrl)
     };
     
   } catch (error) {
@@ -365,10 +378,22 @@ ${text}`;
 function createSummarizationPrompt(content, targetLanguage, pageUrl) {
   const domain = extractDomainFromUrl(pageUrl);
   
-  return `Summarize the key points from this web content in ${targetLanguage}. Create 3-5 concise bullet points with relevant emojis. Focus on the most important information a user would want to know.
+  return `🚨 CRITICAL: You MUST write the ENTIRE summary (title AND bullet points) in ${targetLanguage}. Every single word in the title and all bullet points must be in ${targetLanguage}. Do not use English or any other language.
 
+🎯 TITLE REQUIREMENT: Write the summary title completely in ${targetLanguage}.
+
+Task: Summarize the key points from this web content in ${targetLanguage} ONLY. Create 3-5 concise bullet points with relevant emojis. Focus on the most important information a user would want to know.
+
+Target Language: ${targetLanguage}
 Website: ${domain}
-Content: ${content.substring(0, 3000)}`;
+
+Content to summarize:
+${content.substring(0, 3000)}
+
+🔥 REMEMBER: 
+- Title must be 100% in ${targetLanguage}
+- All bullet point text must be 100% in ${targetLanguage}
+- NO exceptions - honor the user's language choice completely!`;
 }
 
 function chunkText(text, maxLength) {
@@ -456,4 +481,102 @@ function sanitizeInput(text) {
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
     .trim()
     .substring(0, 10000); // Limit length
+}
+
+// Create localized fallback summary for when AI generation fails
+function createLocalizedFallbackSummary(targetLanguage, pageUrl) {
+  const domain = extractDomainFromUrl(pageUrl);
+  
+  // Predefined fallback messages for major languages
+  const fallbackMessages = {
+    'English': {
+      title: `Summary of ${domain}`,
+      unavailable: 'Content summary is currently unavailable.',
+      retry: 'Please try again in a moment.'
+    },
+    'Spanish / Español': {
+      title: `Resumen de ${domain}`,
+      unavailable: 'El resumen del contenido no está disponible actualmente.',
+      retry: 'Por favor, inténtalo de nuevo en un momento.'
+    },
+    'French / Français': {
+      title: `Résumé de ${domain}`,
+      unavailable: 'Le résumé du contenu n\'est actuellement pas disponible.',
+      retry: 'Veuillez réessayer dans un moment.'
+    },
+    'German / Deutsch': {
+      title: `Zusammenfassung von ${domain}`,
+      unavailable: 'Die Inhaltszusammenfassung ist derzeit nicht verfügbar.',
+      retry: 'Bitte versuchen Sie es in einem Moment erneut.'
+    },
+    'Chinese (Simplified) / 中文(简体)': {
+      title: `${domain} 摘要`,
+      unavailable: '内容摘要当前不可用。',
+      retry: '请稍后再试。'
+    },
+    'Chinese (Traditional) / 中文(繁體)': {
+      title: `${domain} 摘要`,
+      unavailable: '內容摘要目前不可用。',
+      retry: '請稍後再試。'
+    },
+    'Japanese / 日本語': {
+      title: `${domain} の要約`,
+      unavailable: 'コンテンツの要約は現在利用できません。',
+      retry: 'しばらくしてからもう一度お試しください。'
+    },
+    'Korean / 한국어': {
+      title: `${domain} 요약`,
+      unavailable: '콘텐츠 요약을 현재 사용할 수 없습니다.',
+      retry: '잠시 후 다시 시도해 주세요.'
+    },
+    'Portuguese (Brazil) / Português (Brasil)': {
+      title: `Resumo de ${domain}`,
+      unavailable: 'O resumo do conteúdo não está disponível no momento.',
+      retry: 'Tente novamente em um momento.'
+    },
+    'Italian / Italiano': {
+      title: `Riassunto di ${domain}`,
+      unavailable: 'Il riassunto del contenuto non è attualmente disponibile.',
+      retry: 'Riprova tra un momento.'
+    },
+    'Russian / Русский': {
+      title: `Сводка ${domain}`,
+      unavailable: 'Сводка содержимого в настоящее время недоступна.',
+      retry: 'Пожалуйста, попробуйте еще раз через мгновение.'
+    },
+    'Arabic / العربية': {
+      title: `ملخص ${domain}`,
+      unavailable: 'ملخص المحتوى غير متاح حاليًا.',
+      retry: 'يرجى المحاولة مرة أخرى بعد قليل.'
+    },
+    'Hindi / हिन्दी': {
+      title: `${domain} का सारांश`,
+      unavailable: 'सामग्री का सारांश वर्तमान में उपलब्ध नहीं है।',
+      retry: 'कृपया एक क्षण में फिर से प्रयास करें।'
+    }
+  };
+
+  // Check if we have predefined messages for this language
+  const messages = fallbackMessages[targetLanguage];
+  
+  if (messages) {
+    return {
+      title: messages.title,
+      points: [
+        { emoji: '📄', text: messages.unavailable },
+        { emoji: '🔄', text: messages.retry }
+      ]
+    };
+  }
+
+  // For languages without predefined fallbacks, create a generic fallback in the target language
+  // This is a simplified approach - in production, you'd want proper translations
+  return {
+    title: `${domain} Summary`, // Keep this simple since proper translation would require a translation service
+    points: [
+      { emoji: '📄', text: 'Content summary is currently unavailable.' },
+      { emoji: '🔄', text: 'Please try again in a moment.' },
+      { emoji: '🌍', text: `Language: ${targetLanguage}` }
+    ]
+  };
 } 
