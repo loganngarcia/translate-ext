@@ -895,8 +895,8 @@ class APIManager {
 
     Logger.debug(`Making API call to ${endpoint}`, data, 'APIManager');
 
-    // Increased retries for better reliability
-    const maxRetries = 5; // Increased from 3 to 5
+    // Reduce retries for server errors to avoid overwhelming the API
+    const maxRetries = 3; // Reduced from 5 to 3 for better stability
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -928,15 +928,18 @@ class APIManager {
         // Enhanced retry logic with different delays for different error types
         let delay = CONFIG.API.RETRY_DELAY * Math.pow(2, attempt - 1);
         
-        // Shorter delays for network errors, longer for server errors
+        // Much longer delays for server errors to avoid overwhelming the API
         if (error.status >= 500) {
-          delay *= 1.5; // Server errors need more time
+          delay *= 3; // Server errors need much more time
+          // For server errors, add jitter to prevent thundering herd
+          delay += Math.random() * 2000;
         } else if (error.name === 'NetworkError' || !error.status) {
-          delay *= 0.7; // Network errors can be retried faster
+          delay *= 0.8; // Network errors can be retried faster
         }
         
-        // Cap maximum delay at 10 seconds
-        delay = Math.min(delay, 10000);
+        // Cap maximum delay at 30 seconds for server errors, 10 seconds for others
+        const maxDelay = error.status >= 500 ? 30000 : 10000;
+        delay = Math.min(delay, maxDelay);
         
         await this.sleep(delay);
       }
@@ -982,7 +985,10 @@ class APIManager {
         }
       }
 
-      console.log('🌐 Making fetch request to:', url);
+      // Reduce console noise - only log on first attempt or failures
+      if (attempt === 1 || attempt >= 3) {
+        console.log('🌐 Making fetch request to:', url, `(attempt ${attempt})`);
+      }
       
       const response = await fetch(url, {
         method: 'POST',
@@ -1326,6 +1332,21 @@ class MessageRouter {
     // Track ongoing summary generation to prevent duplicates
     this.ongoingSummaries = new Set();
     
+    // Track ongoing translation requests to prevent duplicates
+    this.ongoingTranslations = new Map();
+    
+    // Throttle continuous translation language updates
+    this.languageUpdateThrottles = new Map();
+    
+    // Circuit breaker for API failures
+    this.circuitBreaker = {
+      failures: 0,
+      lastFailure: 0,
+      isOpen: false,
+      threshold: 10, // Open circuit after 10 consecutive failures
+      timeout: 60000 // Keep circuit open for 1 minute
+    };
+    
     this.setupMessageListener();
   }
 
@@ -1563,6 +1584,16 @@ class MessageRouter {
     const { texts, sourceLanguage, targetLanguage, batchInfo } = message;
     const tabId = sender.tab?.id;
 
+    // Check circuit breaker first
+    if (this.isCircuitBreakerOpen()) {
+      Logger.warn('Circuit breaker is open, rejecting translation request', 'MessageRouter');
+      sendResponse({
+        success: false,
+        error: 'Translation service temporarily unavailable. Please try again in a few minutes.'
+      });
+      return;
+    }
+
     // Basic logging for translation requests
     Logger.debug(`Translation request received`, {
       tabId,
@@ -1623,38 +1654,68 @@ class MessageRouter {
       // If we have uncached texts, translate them in batch
       if (uncachedTexts.length > 0) {
         try {
-          // Removed excessive API start logging
+          // Check for duplicate request and throttle
+          const requestKey = `${uncachedTexts.join('|')}:${sourceLanguage}:${targetLanguage}`;
+          const existingRequest = this.ongoingTranslations.get(requestKey);
           
-          const apiStartTime = performance.now();
-          
-          const result = await this.apiManager.translateContent(uncachedTexts, sourceLanguage, targetLanguage);
-          
-          apiCallTime = performance.now() - apiStartTime;
-          firstTokenTime = apiCallTime; // For now, treating the entire API call as first token time
-          
-          if (result && result.success && result.translations) {
-            // Add to translations and cache
-            Object.entries(result.translations).forEach(([originalText, translatedText]) => {
-              translations[originalText] = translatedText;
-              
-              // Cache the result
-              this.cacheManager.set(originalText, sourceLanguage, targetLanguage, {
-                success: true,
-                translatedText: translatedText
-              });
-            });
+          if (existingRequest) {
+            Logger.debug('Duplicate translation request detected, waiting for existing request', 'MessageRouter');
+            const result = await existingRequest;
             
-            // Removed excessive API completion logging
+            // Use result from the existing request
+            if (result && result.success && result.translations) {
+              Object.entries(result.translations).forEach(([originalText, translatedText]) => {
+                if (uncachedTexts.includes(originalText)) {
+                  translations[originalText] = translatedText;
+                }
+              });
+            }
+            apiCallTime = 0; // No new API call was made
           } else {
-            Logger.warn('API translation failed, using fallback', 'MessageRouter');
-            // Use original texts as fallback
-            uncachedTexts.forEach(text => {
-              translations[text] = text;
-            });
+            // Create new translation request
+            const apiStartTime = performance.now();
+            
+            const translationPromise = this.apiManager.translateContent(uncachedTexts, sourceLanguage, targetLanguage);
+            this.ongoingTranslations.set(requestKey, translationPromise);
+            
+            try {
+              const result = await translationPromise;
+              
+              apiCallTime = performance.now() - apiStartTime;
+              firstTokenTime = apiCallTime; // For now, treating the entire API call as first token time
+              
+              if (result && result.success && result.translations) {
+                // Add to translations and cache
+                Object.entries(result.translations).forEach(([originalText, translatedText]) => {
+                  translations[originalText] = translatedText;
+                  
+                  // Cache the result
+                  this.cacheManager.set(originalText, sourceLanguage, targetLanguage, {
+                    success: true,
+                    translatedText: translatedText
+                  });
+                });
+                
+                // Reset circuit breaker on success
+                this.resetCircuitBreaker();
+              } else {
+                Logger.warn('API translation failed, using fallback', 'MessageRouter');
+                this.recordCircuitBreakerFailure();
+                // Use original texts as fallback
+                uncachedTexts.forEach(text => {
+                  translations[text] = text;
+                });
+              }
+            } finally {
+              // Clean up ongoing request tracking
+              this.ongoingTranslations.delete(requestKey);
+            }
           }
         } catch (error) {
           apiCallTime = performance.now() - requestStartTime; // Record error time
           Logger.error('API translation error', error, 'MessageRouter');
+          this.recordCircuitBreakerFailure();
+          
           // Use original texts as fallback
           uncachedTexts.forEach(text => {
             translations[text] = text;
@@ -1957,6 +2018,51 @@ class MessageRouter {
   }
 
   /**
+   * Check if circuit breaker is open
+   * @returns {boolean} True if circuit breaker is open
+   * @private
+   */
+  isCircuitBreakerOpen() {
+    if (!this.circuitBreaker.isOpen) return false;
+    
+    // Check if timeout has passed
+    if (Date.now() - this.circuitBreaker.lastFailure > this.circuitBreaker.timeout) {
+      this.circuitBreaker.isOpen = false;
+      this.circuitBreaker.failures = 0;
+      Logger.info('Circuit breaker reset - attempting to resume API calls', 'MessageRouter');
+      return false;
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Record a circuit breaker failure
+   * @private
+   */
+  recordCircuitBreakerFailure() {
+    this.circuitBreaker.failures++;
+    this.circuitBreaker.lastFailure = Date.now();
+    
+    if (this.circuitBreaker.failures >= this.circuitBreaker.threshold) {
+      this.circuitBreaker.isOpen = true;
+      Logger.warn(`Circuit breaker opened after ${this.circuitBreaker.failures} failures`, 'MessageRouter');
+    }
+  }
+  
+  /**
+   * Reset circuit breaker on successful API call
+   * @private
+   */
+  resetCircuitBreaker() {
+    if (this.circuitBreaker.failures > 0) {
+      this.circuitBreaker.failures = 0;
+      this.circuitBreaker.isOpen = false;
+      Logger.debug('Circuit breaker reset after successful API call', 'MessageRouter');
+    }
+  }
+
+  /**
    * Forward message to sidepanel
    * @param {Object} message - Message to forward
    * @private
@@ -2071,6 +2177,19 @@ class MessageRouter {
       if (!tabId || !targetLanguage) {
         throw new Error('Missing required parameters: tabId and targetLanguage');
       }
+
+      // Throttle rapid language changes for the same tab
+      const throttleKey = `${tabId}`;
+      const now = Date.now();
+      const lastUpdate = this.languageUpdateThrottles.get(throttleKey);
+      
+      if (lastUpdate && (now - lastUpdate) < 1000) { // Throttle updates to max 1 per second
+        Logger.debug(`Throttling language update for tab ${tabId}`, 'MessageRouter');
+        sendResponse({ success: true, throttled: true });
+        return;
+      }
+      
+      this.languageUpdateThrottles.set(throttleKey, now);
 
       // Update continuous translation language in state
       this.stateManager.updateContinuousLanguage(tabId, sourceLanguage, targetLanguage);
@@ -2705,7 +2824,11 @@ chrome.runtime.onSuspend.addListener(() => {
   }
 });
 
-// Initialize immediately if not already running
-if (!backgroundApp) {
+// Prevent duplicate initialization
+if (typeof self.backgroundAppInitialized === 'undefined') {
+  self.backgroundAppInitialized = true;
   initializeBackground();
+  console.log('🚀 Background app initialized (singleton)');
+} else {
+  console.log('⚠️ Background app already initialized, skipping');
 } 

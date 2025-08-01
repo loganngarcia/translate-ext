@@ -4,6 +4,8 @@ let originalContent = new Map();
 let observer = null;
 let currentTranslation = null; // Current translation state for streaming
 let translationQueue = new Map(); // Track pending translations
+let lastTranslationTime = 0; // Prevent excessive API calls
+let activeBatches = new Set(); // Track active batch processing
 let continuousTranslation = {
   enabled: false,
   sourceLanguage: 'auto',
@@ -208,10 +210,23 @@ function getStandardTextElements() {
 
 function getFormTextElements() {
   const formElements = [];
+  let formCounts = {
+    selects: 0,
+    options: 0,
+    placeholders: 0,
+    submitButtons: 0,
+    regularButtons: 0,
+    labels: 0,
+    legends: 0,
+    fieldsets: 0,
+    optgroups: 0
+  };
   
-  // Select dropdowns and their options
+  // 1. Select dropdowns and their options
   document.querySelectorAll('select').forEach(select => {
     if (isElementVisible(select)) {
+      formCounts.selects++;
+      
       // Add the select element itself if it has a visible label
       const selectText = select.getAttribute('aria-label') || select.title;
       if (selectText) {
@@ -223,57 +238,94 @@ function getFormTextElements() {
       // Add all option elements
       select.querySelectorAll('option').forEach(option => {
         const optionText = option.textContent?.trim();
-        if (optionText && optionText.length > 1) {
+        if (optionText && optionText.length > 1 && optionText !== 'Select...') {
           option._translationType = 'option';
           option._originalText = optionText;
           formElements.push(option);
+          formCounts.options++;
+        }
+      });
+      
+      // Add optgroup labels
+      select.querySelectorAll('optgroup').forEach(optgroup => {
+        const label = optgroup.getAttribute('label');
+        if (label && label.trim().length > 1) {
+          optgroup._translationType = 'optgroup-label';
+          optgroup._originalText = label;
+          formElements.push(optgroup);
+          formCounts.optgroups++;
         }
       });
     }
   });
   
-  // Input placeholders and values
-  document.querySelectorAll('input[placeholder], input[type="submit"], input[type="button"], input[value]').forEach(input => {
+  // 2. Input elements (placeholders, submit buttons, button inputs)
+  document.querySelectorAll('input').forEach(input => {
     if (isElementVisible(input)) {
       const placeholder = input.placeholder;
       const value = input.value;
       const ariaLabel = input.getAttribute('aria-label');
+      const title = input.title;
       
+      // Input placeholders
       if (placeholder && placeholder.length > 1) {
         input._translationType = 'placeholder';
         input._originalText = placeholder;
         formElements.push(input);
-      } else if (value && (input.type === 'submit' || input.type === 'button') && value.length > 1) {
+        formCounts.placeholders++;
+      }
+      
+      // Submit and button input values
+      if (value && (input.type === 'submit' || input.type === 'button' || input.type === 'reset') && value.length > 1) {
         input._translationType = 'button-value';
         input._originalText = value;
         formElements.push(input);
-      } else if (ariaLabel && ariaLabel.length > 1) {
+        formCounts.submitButtons++;
+      }
+      
+      // ARIA labels
+      if (ariaLabel && ariaLabel.length > 1) {
         input._translationType = 'aria-label';
         input._originalText = ariaLabel;
+        formElements.push(input);
+      }
+      
+      // Title attributes (tooltips)
+      if (title && title.length > 1) {
+        input._translationType = 'title';
+        input._originalText = title;
         formElements.push(input);
       }
     }
   });
   
-  // Button text
+  // 3. Button elements
   document.querySelectorAll('button').forEach(button => {
     if (isElementVisible(button)) {
       const buttonText = button.textContent?.trim();
       const ariaLabel = button.getAttribute('aria-label');
+      const title = button.title;
       
       if (buttonText && buttonText.length > 1) {
         button._translationType = 'button-text';
         button._originalText = buttonText;
         formElements.push(button);
+        formCounts.regularButtons++;
       } else if (ariaLabel && ariaLabel.length > 1) {
         button._translationType = 'button-aria';
         button._originalText = ariaLabel;
         formElements.push(button);
       }
+      
+      if (title && title.length > 1) {
+        button._translationType = 'title';
+        button._originalText = title;
+        formElements.push(button);
+      }
     }
   });
   
-  // Labels
+  // 4. Form labels
   document.querySelectorAll('label').forEach(label => {
     if (isElementVisible(label)) {
       const labelText = label.textContent?.trim();
@@ -281,9 +333,50 @@ function getFormTextElements() {
         label._translationType = 'label';
         label._originalText = labelText;
         formElements.push(label);
+        formCounts.labels++;
       }
     }
   });
+  
+  // 5. Fieldset legends
+  document.querySelectorAll('legend').forEach(legend => {
+    if (isElementVisible(legend)) {
+      const legendText = legend.textContent?.trim();
+      if (legendText && legendText.length > 1) {
+        legend._translationType = 'legend';
+        legend._originalText = legendText;
+        formElements.push(legend);
+        formCounts.legends++;
+      }
+    }
+  });
+  
+  // 6. Textarea placeholders
+  document.querySelectorAll('textarea[placeholder]').forEach(textarea => {
+    if (isElementVisible(textarea)) {
+      const placeholder = textarea.placeholder;
+      if (placeholder && placeholder.length > 1) {
+        textarea._translationType = 'placeholder';
+        textarea._originalText = placeholder;
+        formElements.push(textarea);
+        formCounts.placeholders++;
+      }
+    }
+  });
+  
+  console.log('📝 Form elements found:', formCounts);
+  console.log(`🔍 Total form elements to translate: ${formElements.length}`);
+  
+  // Show samples of form elements found
+  if (formElements.length > 0) {
+    console.log('📋 Sample form elements:', 
+      formElements.slice(0, 5).map(el => ({
+        type: el._translationType,
+        text: el._originalText?.substring(0, 30) + '...',
+        tag: el.tagName.toLowerCase()
+      }))
+    );
+  }
   
   return formElements;
 }
@@ -445,7 +538,14 @@ function getDirectTextContent(element) {
       
     case 'button-text':
     case 'label':
+    case 'legend':
       return element.textContent?.trim() || '';
+      
+    case 'optgroup-label':
+      return element.getAttribute('label')?.trim() || '';
+      
+    case 'title':
+      return element.title?.trim() || '';
       
     case 'svg-text':
       return element.textContent?.trim() || '';
@@ -454,13 +554,13 @@ function getDirectTextContent(element) {
     case 'iframe':
     default:
       // For standard DOM elements, get only direct text nodes
-  let text = '';
-  for (const node of element.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      text += node.textContent;
-    }
-  }
-  return text.trim();
+      let text = '';
+      for (const node of element.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          text += node.textContent;
+        }
+      }
+      return text.trim();
   }
 }
 
@@ -767,8 +867,8 @@ async function processElementsInStreaming(elements, sourceLanguage, targetLangua
     return;
   }
   
-  // Group elements into small batches
-  const batchSize = 8;
+  // Group elements into smaller batches to reduce API load
+  const batchSize = 5; // Reduced from 8 to 5
   const batches = [];
   
   for (let i = 0; i < translatableElements.length; i += batchSize) {
@@ -787,9 +887,9 @@ async function processElementsInStreaming(elements, sourceLanguage, targetLangua
     const batch = batches[i];
     await processBatch(batch, sourceLanguage, targetLanguage, i + 1, batches.length);
     
-    // Small delay between batches to keep page responsive
+    // Longer delay between batches to prevent API flooding
     if (i < batches.length - 1) {
-      await sleep(100); // 100ms delay
+      await sleep(300); // Increased from 100ms to 300ms
     }
   }
 }
@@ -803,41 +903,58 @@ async function processElementsInStreaming(elements, sourceLanguage, targetLangua
  * @param {number} totalBatches - Total number of batches
  */
 async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, totalBatches) {
-  console.log(`📝 Processing batch ${batchNum}/${totalBatches} (${elements.length} elements)`);
+  const batchId = `${batchNum}-${Date.now()}`;
   
-  // Extract direct text from elements (not including children)
-  const textMap = new Map();
-  const textsToTranslate = [];
-  
-  elements.forEach(element => {
-    const directText = getDirectTextContent(element);
-    if (directText && shouldTranslateText(directText)) {
-      textMap.set(directText, element);
-      textsToTranslate.push(directText);
-    }
-  });
-  
-  if (textsToTranslate.length === 0) {
-    console.log(`⏭️ Batch ${batchNum} - no translatable text found`);
+  // Prevent duplicate batch processing
+  if (activeBatches.has(batchId)) {
+    console.log(`⏭️ Batch ${batchNum} already processing, skipping duplicate`);
     return;
   }
   
-  // Combine texts for efficient API call
-  const combinedText = textsToTranslate.join('\n---SEPARATOR---\n');
+  activeBatches.add(batchId);
   
   try {
+    console.log(`📝 Processing batch ${batchNum}/${totalBatches} (${elements.length} elements)`);
+    
+    // Throttle API calls - minimum 500ms between batches
+    const now = Date.now();
+    const timeSinceLastCall = now - lastTranslationTime;
+    if (timeSinceLastCall < 500) {
+      const delay = 500 - timeSinceLastCall;
+      console.log(`⏳ Throttling batch ${batchNum} - waiting ${delay}ms`);
+      await sleep(delay);
+    }
+    lastTranslationTime = Date.now();
+    
+    // Extract direct text from elements (not including children)
+    const textMap = new Map();
+    const textsToTranslate = [];
+    
+    elements.forEach(element => {
+      const directText = getDirectTextContent(element);
+      if (directText && shouldTranslateText(directText)) {
+        textMap.set(directText, element);
+        textsToTranslate.push(directText);
+      }
+    });
+    
+    if (textsToTranslate.length === 0) {
+      console.log(`⏭️ Batch ${batchNum} - no translatable text found`);
+      return;
+    }
+    
     // Check if Chrome runtime is still available
     if (!chrome.runtime?.id) {
       throw new Error('Extension context invalidated');
     }
     
-    // Send to background for translation with timeout and retry logic
+    // Send to background for translation with reduced retries
     const response = await sendMessageWithRetry({
       action: 'translateText',
-      texts: textsToTranslate, // Send array of texts instead of combined string
+      texts: textsToTranslate,
       sourceLanguage,
       targetLanguage
-    }, 3); // 3 retries
+    }, 2); // Reduced from 3 to 2 retries
     
     if (response.success && response.translations) {
       // Apply translations using the translations object
@@ -870,6 +987,9 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
     }
     
     console.error(`❌ Batch ${batchNum} failed:`, error);
+  } finally {
+    // Always remove batch from active set
+    activeBatches.delete(batchId);
   }
 }
 
@@ -917,8 +1037,19 @@ function replaceDirectTextContent(element, newText) {
       
     case 'button-text':
     case 'label':
-      // For button text and labels, replace text content
+    case 'legend':
+      // For button text, labels, and legends, replace text content
       element.textContent = newText;
+      break;
+      
+    case 'optgroup-label':
+      // For optgroup labels, update the label attribute
+      element.setAttribute('label', newText);
+      break;
+      
+    case 'title':
+      // For title attributes (tooltips)
+      element.title = newText;
       break;
       
     case 'svg-text':
@@ -1063,6 +1194,15 @@ async function handleStartContinuousTranslation(message, sendResponse) {
   try {
     const { sourceLanguage, targetLanguage } = message;
     
+    // Prevent duplicate continuous translation startup
+    if (continuousTranslation.enabled && 
+        continuousTranslation.sourceLanguage === sourceLanguage && 
+        continuousTranslation.targetLanguage === targetLanguage) {
+      console.log('🔄 Continuous translation already running with same languages');
+      sendResponse({ success: true, message: 'Already running' });
+      return;
+    }
+    
     // Enable continuous translation
     continuousTranslation.enabled = true;
     continuousTranslation.sourceLanguage = sourceLanguage;
@@ -1081,14 +1221,7 @@ async function handleStartContinuousTranslation(message, sendResponse) {
       observer = null;
     }
     
-    // Check if continuous translation is still enabled (in case it was disabled during navigation)
-    if (!continuousTranslation.enabled) {
-      console.log('🛑 Continuous translation was disabled during startup');
-      sendResponse({ success: false, error: 'Continuous translation disabled' });
-      return;
-    }
-    
-    // Perform initial translation of current page
+    // Perform initial translation of current page (only once)
     await handleTranslatePage(message, (response) => {
       // Translation complete, start observing for new elements
       if (response.success) {
@@ -1182,16 +1315,73 @@ async function translateNewElementsContinuous(elements) {
   }
 }
 
-// Cleanup on page unload
+// Cleanup on page unload (only once)
+let cleanupDone = false;
 window.addEventListener('beforeunload', () => {
-  if (observer) {
-    observer.disconnect();
+  if (!cleanupDone) {
+    cleanupDone = true;
+    
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    originalContent.clear();
+    activeBatches.clear();
+    
+    // Stop continuous translation on page unload
+    continuousTranslation.enabled = false;
+    currentTranslation = null;
+    
+    console.log('🧹 Content script cleanup completed');
   }
-  originalContent.clear();
-  
-  // Stop continuous translation on page unload
-  continuousTranslation.enabled = false;
 });
+
+// Add a global testing function to check form element detection
+window.testFormElementDetection = function() {
+  console.log('🧪 Testing form element detection...');
+  
+  const formElements = getFormTextElements();
+  const standardElements = getStandardTextElements();
+  
+  console.log('📊 Detection Results:');
+  console.log(`   - Standard elements: ${standardElements.length}`);
+  console.log(`   - Form elements: ${formElements.length}`);
+  
+  // Group form elements by type
+  const byType = {};
+  formElements.forEach(el => {
+    const type = el._translationType;
+    if (!byType[type]) byType[type] = [];
+    byType[type].push(el._originalText);
+  });
+  
+  console.log('📝 Form elements by type:');
+  Object.entries(byType).forEach(([type, texts]) => {
+    console.log(`   ${type}: ${texts.length} items`);
+    if (texts.length > 0) {
+      console.log(`      Examples: ${texts.slice(0, 3).join(', ')}`);
+    }
+  });
+  
+  // Specifically check for common form submission elements
+  const submitButtons = document.querySelectorAll('input[type="submit"], button[type="submit"], button:not([type])');
+  const selects = document.querySelectorAll('select');
+  const options = document.querySelectorAll('option');
+  
+  console.log('🎯 Specific form element counts:');
+  console.log(`   - Submit buttons: ${submitButtons.length}`);
+  console.log(`   - Dropdown selects: ${selects.length}`);
+  console.log(`   - Dropdown options: ${options.length}`);
+  
+  return {
+    formElements: formElements.length,
+    standardElements: standardElements.length,
+    byType,
+    submitButtons: submitButtons.length,
+    selects: selects.length,
+    options: options.length
+  };
+};
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
