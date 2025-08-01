@@ -76,7 +76,10 @@ const CONFIG = {
     SIDEPANEL_CLOSED: 'sidepanelClosed',
     GENERATE_SUMMARY: 'generateSummary',
     STREAM_TRANSLATION_CHUNK: 'streamTranslationChunk',
-    STREAM_SUMMARY_CHUNK: 'streamSummaryChunk'
+    STREAM_SUMMARY_CHUNK: 'streamSummaryChunk',
+    CHAT_MESSAGE: 'chatMessage',
+    CHAT_RESPONSE: 'chatResponse',
+    UPDATE_CHAT_CONTEXT: 'updateChatContext'
   },
 
   // Error types
@@ -963,13 +966,24 @@ class APIManager {
 
       // Ensure required fields are present for different endpoints
       const endpoint = url.split('/').pop();
-      if (endpoint === 'translate' && (!data.content || !data.targetLanguage)) {
-        throw new Error('Missing required fields: content and targetLanguage');
-      }
-      if (endpoint === 'summarize' && (!data.content || !data.targetLanguage)) {
-        throw new Error('Missing required fields: content and targetLanguage');
+      
+      // Validate based on action type instead of endpoint
+      if (endpoint === 'translate') {
+        if (data.action === 'chat') {
+          // Chat action validation
+          if (!data.message || !data.targetLanguage) {
+            throw new Error('Missing required fields for chat: message and targetLanguage');
+          }
+        } else {
+          // Translation/summarization validation
+          if (!data.content || !data.targetLanguage) {
+            throw new Error('Missing required fields: content and targetLanguage');
+          }
+        }
       }
 
+      console.log('🌐 Making fetch request to:', url);
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -1025,6 +1039,11 @@ class APIManager {
       
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');
+      }
+      
+      // Provide more specific error messages for common issues
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error('Network error - failed to reach API');
       }
       
       throw error;
@@ -1409,6 +1428,10 @@ class MessageRouter {
 
         case CONFIG.MESSAGES.CLEAR_CACHE:
           await this.handleClearCache(message, sender, sendResponse);
+          break;
+
+        case CONFIG.MESSAGES.CHAT_MESSAGE:
+          await this.handleChatMessage(message, sender, sendResponse);
           break;
 
         default:
@@ -2215,6 +2238,99 @@ class MessageRouter {
         action: CONFIG.MESSAGES.STREAM_SUMMARY_CHUNK,
         tabId,
         chunk: { type: 'error', error: error.message }
+      });
+    }
+  }
+
+  /**
+   * Handle chat message request
+   * @param {Object} message - Message data
+   * @param {Object} sender - Sender information
+   * @param {Function} sendResponse - Response callback
+   * @private
+   */
+  async handleChatMessage(message, sender, sendResponse) {
+    const { message: userMessage, conversationHistory, pageContent, summary, targetLanguage } = message;
+    const tabId = sender.tab?.id;
+
+    try {
+      Logger.info(`Chat message received for tab ${tabId}`, 'MessageRouter');
+      Logger.debug('Chat message details:', {
+        hasMessage: !!userMessage,
+        targetLanguage: targetLanguage,
+        hasPageContent: !!pageContent,
+        hasSummary: !!summary,
+        historyLength: conversationHistory?.length || 0
+      }, 'MessageRouter');
+
+      // Validate required fields
+      if (!userMessage) {
+        throw new Error('Missing required field: message');
+      }
+      
+      if (!targetLanguage) {
+        throw new Error('Missing required field: targetLanguage');
+      }
+
+      // Get current page URL for context
+      let pageUrl = '';
+      if (tabId) {
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          pageUrl = tab.url;
+        } catch (error) {
+          Logger.warn('Failed to get tab URL for chat context', error, 'MessageRouter');
+        }
+      }
+
+      // Prepare API request
+      const apiRequest = {
+        action: 'chat',
+        message: userMessage,
+        conversationHistory: conversationHistory || [],
+        content: pageContent,
+        summary: summary,
+        targetLanguage: targetLanguage || 'English',
+        pageUrl: pageUrl
+      };
+
+      Logger.debug('Sending chat request to API', apiRequest, 'MessageRouter');
+
+      // Call API
+      const response = await this.apiManager.makeAPICall(
+        CONFIG.API.ENDPOINTS.TRANSLATE, // Reuse same endpoint
+        apiRequest
+      );
+
+      if (response.success) {
+        Logger.info('Chat response received successfully', 'MessageRouter');
+        
+        // Send response back to chat interface
+        sendResponse({
+          success: true,
+          response: response.response,
+          suggestedQuestions: response.suggestedQuestions || []
+        });
+
+        // Optionally update chat context for other components
+        this.forwardToSidepanel({
+          action: CONFIG.MESSAGES.CHAT_RESPONSE,
+          tabId,
+          response: response.response,
+          suggestedQuestions: response.suggestedQuestions
+        });
+
+      } else {
+        throw new Error(response.error || 'API request failed');
+      }
+
+    } catch (error) {
+      Logger.error('Chat message handling failed', error, 'MessageRouter');
+      
+      // Send error response
+      sendResponse({
+        success: false,
+        error: error.message || 'Failed to process chat message'
       });
     }
   }

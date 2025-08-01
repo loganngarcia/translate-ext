@@ -72,6 +72,33 @@ const summaryTool = {
   }
 };
 
+const chatTool = {
+  toolSpec: {
+    name: "provide_chat_response",
+    description: "Provide helpful conversational responses about website content and translations",
+    inputSchema: {
+      json: {
+        type: "object",
+        properties: {
+          response: {
+            type: "string",
+            description: "Conversational response about the content, translation, or language learning"
+          },
+          suggestedQuestions: {
+            type: "array",
+            description: "3-5 suggested follow-up questions",
+            items: {
+              type: "string"
+            },
+            maxItems: 5
+          }
+        },
+        required: ["response"]
+      }
+    }
+  }
+};
+
 
 
 // Main Lambda handler
@@ -103,11 +130,23 @@ exports.handler = async (event) => {
       body = event;
     }
     
-    const { action, content, sourceLanguage, targetLanguage, pageUrl } = body;
+    const { action, content, sourceLanguage, targetLanguage, pageUrl, message, conversationHistory, summary } = body;
 
-    // Validate input
-    if (!action || !content) {
-      return createErrorResponse('Missing required fields: action and content', 400, headers);
+    // Validate input based on action
+    if (!action) {
+      return createErrorResponse('Missing required field: action', 400, headers);
+    }
+    
+    if (action === 'chat' && !message) {
+      return createErrorResponse('Missing required field: message for chat action', 400, headers);
+    }
+    
+    if (action === 'chat' && !targetLanguage) {
+      return createErrorResponse('Missing required field: targetLanguage for chat action', 400, headers);
+    }
+    
+    if ((action === 'translate' || action === 'summarize') && !content) {
+      return createErrorResponse('Missing required field: content', 400, headers);
     }
 
     let result;
@@ -121,6 +160,9 @@ exports.handler = async (event) => {
         result = await handleSummarization(content, targetLanguage, pageUrl);
         break;
         
+      case 'chat':
+        result = await handleChatMessage(message, targetLanguage, pageUrl, content, conversationHistory, summary);
+        break;
 
       default:
         return createErrorResponse(`Unknown action: ${action}`, 400, headers);
@@ -211,6 +253,96 @@ Remember: ALL output must be in ${targetLanguage}. No exceptions.`,
   }
   
   return { translations: allTranslations };
+}
+
+async function handleChatMessage(message, targetLanguage, pageUrl, pageContent, conversationHistory = [], summary = null) {
+  console.log(`💬 Chat message - Target Language: "${targetLanguage}" for URL: ${pageUrl}`);
+  const prompt = createChatPrompt(message, targetLanguage, pageUrl, pageContent, conversationHistory, summary);
+  
+  try {
+    const response = await invokeNovaModel({
+      system: `You are a helpful AI assistant specialized in website content analysis and translation assistance. You MUST respond in ${targetLanguage} and ONLY ${targetLanguage}.
+
+🚨 CRITICAL LANGUAGE REQUIREMENT 🚨
+TARGET LANGUAGE: ${targetLanguage}
+YOU MUST WRITE EVERYTHING IN ${targetLanguage} ONLY!
+
+CAPABILITIES:
+- Answer questions about website content and its meaning
+- Explain translation choices and cultural context
+- Provide language learning insights
+- Help with understanding complex terms or concepts
+- Suggest better translation alternatives
+- Explain cultural nuances and context
+
+CONVERSATION STYLE:
+- Be conversational, helpful, and friendly
+- Write entirely in ${targetLanguage}
+- Keep responses concise but informative (2-4 sentences)
+- Use natural ${targetLanguage} expressions and tone
+- Provide practical, actionable insights
+- Reference the specific page content when relevant
+
+CONTEXT AWARENESS:
+- You have access to the current webpage content
+- You know the translation language pair being used
+- You can reference the AI-generated summary if available
+- You maintain conversation context from previous messages
+
+RESPONSE REQUIREMENTS:
+- Use the provide_chat_response tool for all responses
+- Write the response entirely in ${targetLanguage}
+- Suggest 3-5 relevant follow-up questions in ${targetLanguage}
+- Make suggestions contextual to the current page and conversation
+
+🔥 FINAL REMINDER: The user selected ${targetLanguage} as their language. Honor their choice completely by writing EVERYTHING in ${targetLanguage}!`,
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: prompt }]
+        }
+      ],
+      toolConfig: {
+        tools: [chatTool],
+        toolChoice: {
+          tool: {
+            name: "provide_chat_response"
+          }
+        }
+      }
+    });
+
+    const toolUse = extractToolUse(response);
+    
+    if (toolUse && toolUse.name === 'provide_chat_response') {
+      try {
+        const functionResult = toolUse.input;
+        
+        // Log what the AI generated for debugging
+        console.log(`🤖 AI Generated Chat Response in "${targetLanguage}":`, JSON.stringify(functionResult, null, 2));
+        
+        // Validate response structure
+        if (functionResult.response) {
+          return { 
+            response: functionResult.response,
+            suggestedQuestions: functionResult.suggestedQuestions || []
+          };
+        }
+      } catch (parseError) {
+        console.error('Failed to parse chat function result:', parseError);
+      }
+    }
+    
+    // Fallback response if parsing fails
+    return {
+      response: createLocalizedFallbackChatResponse(targetLanguage),
+      suggestedQuestions: []
+    };
+    
+  } catch (error) {
+    console.error('Chat error:', error);
+    throw new Error('Failed to generate chat response');
+  }
 }
 
 async function handleSummarization(content, targetLanguage, pageUrl) {
@@ -396,6 +528,46 @@ ${content.substring(0, 3000)}
 - NO exceptions - honor the user's language choice completely!`;
 }
 
+function createChatPrompt(message, targetLanguage, pageUrl, pageContent, conversationHistory, summary) {
+  const domain = extractDomainFromUrl(pageUrl);
+  
+  let prompt = `🚨 CRITICAL: You MUST write your ENTIRE response in ${targetLanguage}. Every word must be in ${targetLanguage}.
+
+User's question: "${message}"
+
+Context Information:
+- Target Language: ${targetLanguage}
+- Website: ${domain}
+- Page URL: ${pageUrl}`;
+
+  if (pageContent) {
+    prompt += `\n- Page Content Preview: ${pageContent.substring(0, 2000)}`;
+  }
+
+  if (summary) {
+    prompt += `\n- Current AI Summary: ${JSON.stringify(summary)}`;
+  }
+
+  if (conversationHistory && conversationHistory.length > 0) {
+    prompt += `\n- Conversation History:`;
+    conversationHistory.slice(-6).forEach((msg, index) => {
+      prompt += `\n  ${msg.role}: ${msg.content}`;
+    });
+  }
+
+  prompt += `\n\nInstructions:
+- Answer the user's question in ${targetLanguage} ONLY
+- Be helpful, conversational, and informative
+- Reference the page content when relevant
+- Provide practical insights about the content or translation
+- Keep response concise but useful (2-4 sentences)
+- Suggest relevant follow-up questions in ${targetLanguage}
+
+🔥 REMEMBER: Write EVERYTHING in ${targetLanguage}. The user expects to read your response in ${targetLanguage}!`;
+
+  return prompt;
+}
+
 function chunkText(text, maxLength) {
   if (text.length <= maxLength) {
     return [text];
@@ -456,16 +628,25 @@ function validateInput(body) {
     errors.push('action is required');
   }
   
-  if (!body.content) {
-    errors.push('content is required');
+  // Validate based on action type
+  if (body.action === 'chat') {
+    if (!body.message) {
+      errors.push('message is required for chat action');
+    }
+    if (body.message && body.message.length > 1000) {
+      errors.push('message exceeds maximum length of 1,000 characters');
+    }
+  } else {
+    if (!body.content) {
+      errors.push('content is required');
+    }
+    if (body.content && body.content.length > 10000) {
+      errors.push('content exceeds maximum length of 10,000 characters');
+    }
   }
   
   if (body.action === 'translate' && !body.targetLanguage) {
     errors.push('targetLanguage is required for translation');
-  }
-  
-  if (body.content && body.content.length > 10000) {
-    errors.push('content exceeds maximum length of 10,000 characters');
   }
   
   return errors;
@@ -481,6 +662,27 @@ function sanitizeInput(text) {
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
     .trim()
     .substring(0, 10000); // Limit length
+}
+
+// Create localized fallback chat response for when AI generation fails
+function createLocalizedFallbackChatResponse(targetLanguage) {
+  // Predefined fallback messages for major languages
+  const fallbackMessages = {
+    'English': 'I\'m sorry, I\'m having trouble responding right now. Please try asking your question again.',
+    'Spanish / Español': 'Lo siento, estoy teniendo problemas para responder ahora. Por favor, intenta hacer tu pregunta de nuevo.',
+    'French / Français': 'Je suis désolé, j\'ai des difficultés à répondre maintenant. Veuillez réessayer votre question.',
+    'German / Deutsch': 'Es tut mir leid, ich habe Schwierigkeiten zu antworten. Bitte stellen Sie Ihre Frage erneut.',
+    'Chinese (Simplified) / 中文(简体)': '抱歉，我现在无法回答。请重新提问。',
+    'Japanese / 日本語': '申し訳ございませんが、現在お答えできません。もう一度質問してください。',
+    'Korean / 한국어': '죄송합니다. 지금 답변하는 데 문제가 있습니다. 질문을 다시 해주세요.',
+    'Portuguese (Brazil) / Português (Brasil)': 'Desculpe, estou tendo problemas para responder agora. Tente fazer sua pergunta novamente.',
+    'Italian / Italiano': 'Mi dispiace, sto avendo problemi a rispondere ora. Prova a fare la tua domanda di nuovo.',
+    'Russian / Русский': 'Извините, у меня проблемы с ответом. Пожалуйста, задайте свой вопрос еще раз.',
+    'Arabic / العربية': 'أعتذر، أواجه مشكلة في الرد الآن. يرجى طرح سؤالك مرة أخرى.',
+    'Hindi / हिन्दी': 'खुशी है, मुझे अभी जवाब देने में समस्या हो रही है। कृपया अपना प्रश्न फिर से पूछें।'
+  };
+
+  return fallbackMessages[targetLanguage] || 'Sorry, I\'m having trouble responding right now. Please try again.';
 }
 
 // Create localized fallback summary for when AI generation fails

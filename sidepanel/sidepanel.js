@@ -1326,6 +1326,10 @@ class EventManager {
           case 'streamSummaryChunk':
             this.handleStreamSummaryChunk(message);
             break;
+
+          case 'untranslatableContentDetected':
+            this.handleUntranslatableContentDetected(message);
+            break;
             
           default:
             Logger.debug(`Unhandled message action: ${message.action}`, null, 'EventManager');
@@ -1654,6 +1658,28 @@ class EventManager {
   }
 
   /**
+   * Handle untranslatable content detected message
+   * @param {Object} message - Message containing details about untranslatable content
+   * @private
+   */
+  handleUntranslatableContentDetected(message) {
+    const { details } = message;
+    Logger.info('Untranslatable content detected', details, 'EventManager');
+    
+    if (details && details.message) {
+      // Show a subtle notification about content limitations
+      this.uiManager.showInfoMessage(
+        details.message,
+        'info',
+        { 
+          duration: 8000, // Show longer for informational messages
+          priority: 'low' // Don't interrupt other important operations
+        }
+      );
+    }
+  }
+
+  /**
    * Handle continuous translation restarting message
    * @param {Object} message - Message data
    * @private
@@ -1881,6 +1907,14 @@ class SidepanelApp {
       // Hide AI overview initially
       this.uiManager.toggleAIOverview(false);
       
+      // Initialize chat manager integration if available
+      if (window.chatManager) {
+        this.setupChatIntegration();
+        // Immediately update chat context with current state
+        this.updateChatContext();
+        Logger.info('Chat manager integrated successfully', 'SidepanelApp');
+      }
+      
       // Mark as initialized
       this.isInitialized = true;
       this.stateManager.set('isInitialized', true);
@@ -1955,6 +1989,58 @@ class SidepanelApp {
       Logger.info('Application cleanup completed', 'SidepanelApp');
     } catch (error) {
       Logger.error('Error during application cleanup', error, 'SidepanelApp');
+    }
+  }
+
+  /**
+   * Setup chat manager integration
+   * @private
+   */
+  setupChatIntegration() {
+    if (!window.chatManager) return;
+    
+    // Update chat context when state changes
+    this.stateManager.subscribe('targetLanguage', (language) => {
+      this.updateChatContext();
+    });
+    
+    this.stateManager.subscribe('currentSummary', (summary) => {
+      this.updateChatContext();
+    });
+    
+    this.stateManager.subscribe('pageContent', (content) => {
+      this.updateChatContext();
+    });
+  }
+  
+  /**
+   * Update chat context with current application state
+   * @private
+   */
+  updateChatContext() {
+    if (!window.chatManager) return;
+    
+    try {
+      const contextData = {
+        targetLanguage: this.stateManager.get('targetLanguage'),
+        summary: this.stateManager.get('currentSummary'),
+        pageContent: this.stateManager.get('pageContent')
+      };
+      
+      // Debug: log what we're sending to chat manager
+      console.log('🔄 Updating chat context with:', {
+        hasTargetLanguage: !!contextData.targetLanguage,
+        hasSummary: !!contextData.summary,
+        hasPageContent: !!contextData.pageContent,
+        summaryPointsCount: contextData.summary?.points?.length || 0,
+        pageContentLength: contextData.pageContent?.length || 0,
+        allStateKeys: Object.keys(this.stateManager.state || {})
+      });
+      
+      window.chatManager.updateContext(contextData);
+      Logger.debug('Chat context updated', contextData, 'SidepanelApp');
+    } catch (error) {
+      Logger.error('Failed to update chat context', error, 'SidepanelApp');
     }
   }
 }

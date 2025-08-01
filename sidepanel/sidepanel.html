@@ -8,11 +8,18 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="sidepanel.css">
+  <link rel="stylesheet" href="chat.css">
 </head>
 <body>
   <div class="chat-page">
     <div class="summary-page">
       <div class="auto-layout">
+        <!-- Tab Switcher -->
+        <div class="tab-switcher">
+          <button class="tab active" data-tab="summary" id="summary-tab">Summary</button>
+          <button class="tab" data-tab="chat" id="chat-tab">Chat</button>
+        </div>
+
         <!-- Language Selection -->
         <div class="language-selector">
           <div class="source-language">
@@ -343,6 +350,31 @@
             </button>
           </div>
         </div>
+
+        <!-- Chat Container -->
+        <div class="chat-container" id="chat-container" style="display: none;">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">
+              <div class="chat-welcome-icon">💬</div>
+              <div class="chat-welcome-text">Ask me anything about this page or its translation!</div>
+              <div class="chat-suggestions" id="chat-suggestions">
+                <button class="suggestion-btn">What's the main topic?</button>
+                <button class="suggestion-btn">Explain this translation</button>
+                <button class="suggestion-btn">Cultural context?</button>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+              <input type="text" id="chat-input" placeholder="Ask about this page..." maxlength="500">
+              <button class="chat-send-btn" id="chat-send-btn" disabled>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 1L15 8L8 15M15 8H1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -357,6 +389,7 @@
     </div>
   </div>
 
+  <script src="chat.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html> 

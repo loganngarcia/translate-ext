@@ -89,6 +89,22 @@ function setupMessageListeners() {
           handleUpdateContinuousLanguage(message, sendResponse);
           return true;
 
+        case 'getPageContent':
+          // Extract current page content for chat context
+          try {
+            const pageContent = extractCleanText();
+            console.log('📄 Extracted page content for chat:', pageContent.substring(0, 100) + '...');
+            sendResponse({ 
+              success: true, 
+              content: pageContent,
+              url: window.location.href 
+            });
+          } catch (error) {
+            console.error('Failed to extract page content:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+          break;
+
         default:
           console.warn('Content script: Unknown message action:', message.action);
           sendResponse({ success: false, error: 'Unknown action' });
@@ -138,13 +154,42 @@ function extractPageContent() {
 }
 
 function getTextElements() {
-  // Much broader selector to catch all text content
+  const textElements = [];
+  
+  // 1. Standard DOM text elements
+  const standardElements = getStandardTextElements();
+  textElements.push(...standardElements);
+  
+  // 2. Form elements (dropdowns, inputs, buttons)
+  const formElements = getFormTextElements();
+  textElements.push(...formElements);
+  
+  // 3. Shadow DOM elements
+  const shadowElements = getShadowDOMTextElements();
+  textElements.push(...shadowElements);
+  
+  // 4. SVG text elements
+  const svgElements = getSVGTextElements();
+  textElements.push(...svgElements);
+  
+  // 5. Iframe content (where accessible)
+  const iframeElements = getIframeTextElements();
+  textElements.push(...iframeElements);
+  
+  // 6. Canvas and map detection (for user notification)
+  detectCanvasAndMaps();
+  
+  // Remove duplicates and return
+  return [...new Set(textElements)];
+}
+
+function getStandardTextElements() {
   const selector = '*';
   const allElements = document.querySelectorAll(selector);
   
   return Array.from(allElements).filter(el => {
     // Skip non-text elements
-    if (el.closest('script, style, code, pre, noscript, svg')) return false;
+    if (el.closest('script, style, code, pre, noscript')) return false;
     
     // Only elements that have direct text content (not just child text)
     const directText = getDirectTextContent(el);
@@ -161,12 +206,254 @@ function getTextElements() {
   });
 }
 
+function getFormTextElements() {
+  const formElements = [];
+  
+  // Select dropdowns and their options
+  document.querySelectorAll('select').forEach(select => {
+    if (isElementVisible(select)) {
+      // Add the select element itself if it has a visible label
+      const selectText = select.getAttribute('aria-label') || select.title;
+      if (selectText) {
+        select._translationType = 'select-label';
+        select._originalText = selectText;
+        formElements.push(select);
+      }
+      
+      // Add all option elements
+      select.querySelectorAll('option').forEach(option => {
+        const optionText = option.textContent?.trim();
+        if (optionText && optionText.length > 1) {
+          option._translationType = 'option';
+          option._originalText = optionText;
+          formElements.push(option);
+        }
+      });
+    }
+  });
+  
+  // Input placeholders and values
+  document.querySelectorAll('input[placeholder], input[type="submit"], input[type="button"], input[value]').forEach(input => {
+    if (isElementVisible(input)) {
+      const placeholder = input.placeholder;
+      const value = input.value;
+      const ariaLabel = input.getAttribute('aria-label');
+      
+      if (placeholder && placeholder.length > 1) {
+        input._translationType = 'placeholder';
+        input._originalText = placeholder;
+        formElements.push(input);
+      } else if (value && (input.type === 'submit' || input.type === 'button') && value.length > 1) {
+        input._translationType = 'button-value';
+        input._originalText = value;
+        formElements.push(input);
+      } else if (ariaLabel && ariaLabel.length > 1) {
+        input._translationType = 'aria-label';
+        input._originalText = ariaLabel;
+        formElements.push(input);
+      }
+    }
+  });
+  
+  // Button text
+  document.querySelectorAll('button').forEach(button => {
+    if (isElementVisible(button)) {
+      const buttonText = button.textContent?.trim();
+      const ariaLabel = button.getAttribute('aria-label');
+      
+      if (buttonText && buttonText.length > 1) {
+        button._translationType = 'button-text';
+        button._originalText = buttonText;
+        formElements.push(button);
+      } else if (ariaLabel && ariaLabel.length > 1) {
+        button._translationType = 'button-aria';
+        button._originalText = ariaLabel;
+        formElements.push(button);
+      }
+    }
+  });
+  
+  // Labels
+  document.querySelectorAll('label').forEach(label => {
+    if (isElementVisible(label)) {
+      const labelText = label.textContent?.trim();
+      if (labelText && labelText.length > 1) {
+        label._translationType = 'label';
+        label._originalText = labelText;
+        formElements.push(label);
+      }
+    }
+  });
+  
+  return formElements;
+}
+
+function getShadowDOMTextElements() {
+  const shadowElements = [];
+  
+  // Find all elements that might have shadow DOM
+  document.querySelectorAll('*').forEach(element => {
+    if (element.shadowRoot) {
+      try {
+        // Recursively search shadow DOM
+        const shadowTextElements = element.shadowRoot.querySelectorAll('*');
+        shadowTextElements.forEach(shadowEl => {
+          const directText = getDirectTextContent(shadowEl);
+          if (directText && directText.length > 3 && isElementVisible(shadowEl)) {
+            shadowEl._translationType = 'shadow-dom';
+            shadowEl._originalText = directText;
+            shadowElements.push(shadowEl);
+          }
+        });
+      } catch (error) {
+        // Shadow DOM access might be restricted
+        console.warn('Could not access shadow DOM:', error);
+      }
+    }
+  });
+  
+  return shadowElements;
+}
+
+function getSVGTextElements() {
+  const svgElements = [];
+  
+  // Find text elements within SVG
+  document.querySelectorAll('svg text, svg textPath, svg tspan').forEach(textEl => {
+    if (isElementVisible(textEl)) {
+      const textContent = textEl.textContent?.trim();
+      if (textContent && textContent.length > 1) {
+        textEl._translationType = 'svg-text';
+        textEl._originalText = textContent;
+        svgElements.push(textEl);
+      }
+    }
+  });
+  
+  return svgElements;
+}
+
+function getIframeTextElements() {
+  const iframeElements = [];
+  
+  // Try to access iframe content (only works for same-origin)
+  document.querySelectorAll('iframe').forEach(iframe => {
+    try {
+      if (iframe.contentDocument && iframe.contentWindow) {
+        const iframeDoc = iframe.contentDocument;
+        const iframeTextElements = iframeDoc.querySelectorAll('*');
+        
+        iframeTextElements.forEach(iframeEl => {
+          const directText = getDirectTextContent(iframeEl);
+          if (directText && directText.length > 3) {
+            iframeEl._translationType = 'iframe';
+            iframeEl._originalText = directText;
+            iframeEl._parentIframe = iframe;
+            iframeElements.push(iframeEl);
+          }
+        });
+      }
+    } catch (error) {
+      // Cross-origin iframes will throw security errors
+      console.warn('Could not access iframe content (likely cross-origin):', error);
+    }
+  });
+  
+  return iframeElements;
+}
+
+function detectCanvasAndMaps() {
+  const canvasElements = document.querySelectorAll('canvas');
+  const mapElements = document.querySelectorAll('[class*="map"], [id*="map"], [data-*="map"]');
+  const embeddedMaps = document.querySelectorAll('iframe[src*="maps.google"], iframe[src*="openstreetmap"], iframe[src*="mapbox"]');
+  
+  let hasCanvasContent = false;
+  let hasMapContent = false;
+  
+  // Check for canvas elements that might contain text
+  canvasElements.forEach(canvas => {
+    if (isElementVisible(canvas) && canvas.width > 100 && canvas.height > 100) {
+      hasCanvasContent = true;
+      
+      // Check if this might be a map by looking at parent elements
+      const parentClasses = canvas.parentElement?.className?.toLowerCase() || '';
+      const parentId = canvas.parentElement?.id?.toLowerCase() || '';
+      
+      if (parentClasses.includes('map') || parentId.includes('map') || 
+          parentClasses.includes('leaflet') || parentClasses.includes('google') ||
+          parentClasses.includes('mapbox') || parentClasses.includes('osm')) {
+        hasMapContent = true;
+      }
+    }
+  });
+  
+  // Check for map-specific elements
+  if (mapElements.length > 0 || embeddedMaps.length > 0) {
+    hasMapContent = true;
+  }
+  
+  // Notify user about untranslatable content
+  if (hasCanvasContent || hasMapContent) {
+    notifyAboutUntranslatableContent(hasMapContent, hasCanvasContent, canvasElements.length);
+  }
+}
+
+function notifyAboutUntranslatableContent(hasMaps, hasCanvas, canvasCount) {
+  // Send notification to sidepanel about content that cannot be translated
+  if (isExtensionContextValid()) {
+    sendMessageWithRetry({
+      action: 'untranslatableContentDetected',
+      details: {
+        maps: hasMaps,
+        canvas: hasCanvas,
+        canvasCount: canvasCount,
+        message: hasMaps ? 
+          'Maps and interactive elements detected. Some text in maps, charts, and embedded content cannot be translated due to technical limitations.' :
+          'Canvas-based content detected. Some graphical text elements may not be translatable.'
+      }
+    }, 1).catch(() => {}); // Ignore if sidepanel not available
+  }
+}
+
 /**
- * Get only the direct text content of an element (not including children)
+ * Get text content based on element type
  * @param {Element} element - Element to check
- * @returns {string} Direct text content
+ * @returns {string} Text content to translate
  */
 function getDirectTextContent(element) {
+  if (!element) return '';
+  
+  // If element has a specific translation type, get the appropriate text
+  const translationType = element._translationType;
+  
+  switch (translationType) {
+    case 'option':
+      return element.textContent?.trim() || '';
+      
+    case 'placeholder':
+      return element.placeholder?.trim() || '';
+      
+    case 'button-value':
+      return element.value?.trim() || '';
+      
+    case 'aria-label':
+    case 'button-aria':
+      return element.getAttribute('aria-label')?.trim() || '';
+      
+    case 'select-label':
+      return (element.getAttribute('aria-label') || element.title || '').trim();
+      
+    case 'button-text':
+    case 'label':
+      return element.textContent?.trim() || '';
+      
+    case 'svg-text':
+      return element.textContent?.trim() || '';
+      
+    case 'shadow-dom':
+    case 'iframe':
+    default:
+      // For standard DOM elements, get only direct text nodes
   let text = '';
   for (const node of element.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -174,12 +461,13 @@ function getDirectTextContent(element) {
     }
   }
   return text.trim();
+  }
 }
 
 function extractCleanText() {
   const textElements = getTextElements();
   const texts = textElements
-    .map(el => el.textContent?.trim())
+    .map(el => getDirectTextContent(el))
     .filter(text => text && text.length > 3);
   
   return texts.join(' ').substring(0, 5000); // Limit for API efficiency
@@ -586,11 +874,81 @@ async function processBatch(elements, sourceLanguage, targetLanguage, batchNum, 
 }
 
 /**
- * Replace only the direct text content of an element, preserving child elements
+ * Replace text content based on element type, preserving child elements
  * @param {Element} element - Element to update
  * @param {string} newText - New text content
  */
 function replaceDirectTextContent(element, newText) {
+  if (!element || !newText) return;
+  
+  // Handle different element types based on their translation type
+  const translationType = element._translationType;
+  
+  switch (translationType) {
+    case 'option':
+      // For option elements, replace the text content directly
+      element.textContent = newText;
+      break;
+      
+    case 'placeholder':
+      // For input placeholders
+      element.placeholder = newText;
+      break;
+      
+    case 'button-value':
+      // For button input values
+      element.value = newText;
+      break;
+      
+    case 'aria-label':
+    case 'button-aria':
+      // For ARIA labels
+      element.setAttribute('aria-label', newText);
+      break;
+      
+    case 'select-label':
+      // For select labels (aria-label or title)
+      if (element.hasAttribute('aria-label')) {
+        element.setAttribute('aria-label', newText);
+      } else if (element.hasAttribute('title')) {
+        element.setAttribute('title', newText);
+      }
+      break;
+      
+    case 'button-text':
+    case 'label':
+      // For button text and labels, replace text content
+      element.textContent = newText;
+      break;
+      
+    case 'svg-text':
+      // For SVG text elements
+      element.textContent = newText;
+      break;
+      
+    case 'shadow-dom':
+      // For shadow DOM elements, treat like regular text
+      replaceRegularTextContent(element, newText);
+      break;
+      
+    case 'iframe':
+      // For iframe content, treat like regular text
+      replaceRegularTextContent(element, newText);
+      break;
+      
+    default:
+      // For standard DOM elements, replace only text nodes
+      replaceRegularTextContent(element, newText);
+      break;
+  }
+}
+
+/**
+ * Replace text content for regular DOM elements
+ * @param {Element} element - Element to update
+ * @param {string} newText - New text content
+ */
+function replaceRegularTextContent(element, newText) {
   // Find and replace only text nodes
   for (const node of element.childNodes) {
     if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
